@@ -26,7 +26,7 @@ Ansible playbooks, shell scripts, python and more ...
 - **Schedules** — cron-based recurring runs powered by Celery Beat.
 - **Integrations & webhooks** — trigger templates via incoming webhooks authenticated with HMAC signatures or tokens, with flexible matchers and value extraction from the payload.
 - **Notifications** — send alerts to Email, Slack, Telegram, Teams, Rocket.Chat, DingTalk or Gotify.
-- **Authentication** — local login, JWT access tokens, per-user API tokens, **2FA/TOTP** with recovery codes, LDAP and OIDC.
+- **Authentication** — local login, JWT access tokens, per-user API tokens, **2FA/TOTP** with recovery codes and LDAP.
 - **Dashboard, activity log, views, backup/restore** and auto-generated OpenAPI documentation out of the box.
 
 ## 🧱 Tech Stack
