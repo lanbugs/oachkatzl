@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Maximilian Thoma
+Copyright (c) 2025 lanbugs
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Third-party dependencies
+------------------------
+
+This project uses the following third-party libraries. Their licenses are
+listed below. The full license texts can be found in the respective packages.
+
+MIT:          apiflask, mongoengine, flask-socketio, gevent, gunicorn, redis,
+              flask-cors, PyJWT, argon2-cffi, pyotp, croniter, Vue 3, Pinia,
+              Vue Router, TailwindCSS, Vite, axios
+
+BSD-3-Clause: Flask, celery, flower, gitpython, python-dotenv, qrcode
+
+Apache-2.0:   pymongo, requests, cryptography
+
+ISC:          lucide-vue-next
+
+LGPL-3.0:     ldap3 (https://github.com/cannatag/ldap3)
+              ldap3 is used as a dynamically imported library (pip dependency).
+              Users may replace it with any compatible LGPL-licensed version.
+              This project's MIT license applies only to its own source code
+              and does not extend to ldap3 or any other dependency.

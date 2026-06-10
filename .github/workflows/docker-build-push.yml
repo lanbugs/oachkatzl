@@ -1,0 +1,84 @@
+name: Build & Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: docker.io
+  IMAGE_BASE: lanbugsde/oachkatzl
+
+jobs:
+  build-and-push:
+    name: Build & Push (${{ matrix.service }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            image: lanbugsde/oachkatzl
+
+          - service: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile.worker
+            image: lanbugsde/oachkatzl-worker
+
+          - service: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            image: lanbugsde/oachkatzl-frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            # Bei einem Tag (z.B. v1.2.3) → semver Tags erzeugen
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Immer: Branch-Name als Tag
+            type=ref,event=branch
+            # Bei PRs: pr-<nummer>
+            type=ref,event=pr
+            # Immer: latest auf main
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer-Cache über GitHub Actions Cache
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # Optional: Multi-Arch Build (auskommentiert lassen wenn nicht nötig)
+          platforms: linux/amd64,linux/arm64

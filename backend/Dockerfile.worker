@@ -1,0 +1,25 @@
+# ── Stage 1: build wheels ──────────────────────────────────────────────────
+FROM python:3.12-alpine AS builder
+
+RUN apk add --no-cache build-base libffi-dev openssl-dev
+
+WORKDIR /build
+COPY requirements.txt .
+# Install app deps + ansible in one layer
+RUN pip install --no-cache-dir --prefix=/deps -r requirements.txt && \
+    pip install --no-cache-dir --prefix=/deps ansible
+
+# ── Stage 2: final worker image ────────────────────────────────────────────
+FROM python:3.12-alpine
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Runtime: git, ssh client (ansible), sshpass (password-based SSH), curl
+RUN apk add --no-cache git curl bash openssh-client sshpass
+
+# Copy installed packages from builder
+COPY --from=builder /deps /usr/local
+
+WORKDIR /app
+COPY . .
