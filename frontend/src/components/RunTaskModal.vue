@@ -216,21 +216,6 @@ function submit() {
                 <p v-if="sv.description" class="text-xs text-gray-400">{{ sv.description }}</p>
               </template>
 
-              <!-- Enum → select -->
-              <select
-                v-if="sv.type === 'enum'"
-                v-model="surveyAnswers[sv.name]"
-                class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                :class="errors[sv.name] ? 'border-red-400' : 'border-gray-300'"
-              >
-                <option value="">— Select —</option>
-                <option
-                  v-for="opt in parseEnumOptions(sv.values)"
-                  :key="opt.value"
-                  :value="opt.value"
-                >{{ opt.label }}</option>
-              </select>
-
               <!-- Separator → visual divider -->
               <div v-if="sv.type === 'separator'" class="-mx-1 pt-1">
                 <div class="flex items-center gap-3">
@@ -253,7 +238,22 @@ function submit() {
                 <span class="text-sm text-gray-700">{{ sv.title || sv.name }}</span>
               </label>
 
-              <!-- Others → input -->
+              <!-- Enum → select -->
+              <select
+                v-else-if="sv.type === 'enum'"
+                v-model="surveyAnswers[sv.name]"
+                class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                :class="errors[sv.name] ? 'border-red-400' : 'border-gray-300'"
+              >
+                <option value="">— Select —</option>
+                <option
+                  v-for="opt in parseEnumOptions(sv.values)"
+                  :key="opt.value"
+                  :value="opt.value"
+                >{{ opt.label }}</option>
+              </select>
+
+              <!-- String / int / secret → input -->
               <input
                 v-else
                 v-model="surveyAnswers[sv.name]"

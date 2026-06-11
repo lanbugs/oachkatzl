@@ -113,7 +113,7 @@ def galaxy_install(
             )
 
 
-def build_command(task, workdir: str) -> tuple[list[str], list[str]]:
+def build_command(task, workdir: str, cred_extra_vars: dict | None = None) -> tuple[list[str], list[str]]:
     """Return (cmd, temp_files_to_cleanup)."""
     template = task.template
     cleanup = []
@@ -159,6 +159,68 @@ def build_command(task, workdir: str) -> tuple[list[str], list[str]]:
     except json.JSONDecodeError:
         pass
 
+    # Credential extra_vars (lowest priority — overridden by env/survey/override above)
+    if cred_extra_vars:
+        for k, v in cred_extra_vars.items():
+            extra_vars.setdefault(k, v)
+
+    # SSH / login key → ansible_user, ansible_password, --private-key
+    # Done before writing the extra-vars file so key-derived vars land in it.
+    private_key_path: str | None = None
+    if template.inventory and template.inventory.ssh_key:
+        try:
+            sk_obj = template.inventory.ssh_key
+            sk_data = json.loads(decrypt(sk_obj.secret))
+            if sk_obj.type in ("ssh", "ssh_login", "ssh_become"):
+                pk = sk_data.get("private_key", "")
+                if pk:
+                    fd, sk_path = tempfile.mkstemp()
+                    os.close(fd)
+                    os.chmod(sk_path, stat.S_IRUSR | stat.S_IWUSR)
+                    with open(sk_path, "w") as f:
+                        f.write(pk)
+                    cleanup.append(sk_path)
+                    private_key_path = sk_path
+                if sk_obj.type == "ssh_login":
+                    login = sk_data.get("login", "")
+                    if login:
+                        extra_vars.setdefault("ansible_user", login)
+                elif sk_obj.type == "ssh_become":
+                    login = sk_data.get("login", "")
+                    if login:
+                        extra_vars.setdefault("ansible_user", login)
+                    become_pw = sk_data.get("become_password", "")
+                    if become_pw:
+                        extra_vars.setdefault("ansible_become_password", become_pw)
+            elif sk_obj.type == "login_password":
+                login = sk_data.get("login", "")
+                password = sk_data.get("password", "")
+                if login:
+                    extra_vars.setdefault("ansible_user", login)
+                if password:
+                    extra_vars.setdefault("ansible_password", password)
+        except Exception:
+            pass
+
+    # Become key → ansible_become_user, ansible_become_password
+    if template.inventory and template.inventory.become_key:
+        try:
+            bk_obj = template.inventory.become_key
+            bk_data = json.loads(decrypt(bk_obj.secret))
+            if bk_obj.type == "ssh_become":
+                become_pw = bk_data.get("become_password", "")
+                if become_pw:
+                    extra_vars.setdefault("ansible_become_password", become_pw)
+            else:
+                login = bk_data.get("login", "")
+                password = bk_data.get("password", "")
+                if login:
+                    extra_vars.setdefault("ansible_become_user", login)
+                if password:
+                    extra_vars.setdefault("ansible_become_password", password)
+        except Exception:
+            pass
+
     if extra_vars:
         fd, ev_path = tempfile.mkstemp(suffix=".json")
         os.close(fd)
@@ -186,22 +248,8 @@ def build_command(task, workdir: str) -> tuple[list[str], list[str]]:
             except Exception:
                 pass
 
-    # Become / SSH keys
-    if template.inventory and template.inventory.ssh_key:
-        try:
-            sk_raw = decrypt(template.inventory.ssh_key.secret)
-            sk = json.loads(sk_raw)
-            pk = sk.get("private_key", "")
-            if pk:
-                fd, sk_path = tempfile.mkstemp()
-                os.close(fd)
-                os.chmod(sk_path, stat.S_IRUSR | stat.S_IWUSR)
-                with open(sk_path, "w") as f:
-                    f.write(pk)
-                cleanup.append(sk_path)
-                cmd += ["--private-key", sk_path]
-        except Exception:
-            pass
+    if private_key_path:
+        cmd += ["--private-key", private_key_path]
 
     # Flags
     if task.dry_run:

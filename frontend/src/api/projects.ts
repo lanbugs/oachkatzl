@@ -57,6 +57,11 @@ export const projectsApi = {
   deleteEnvironment: (pid: string, eid: string) => api.delete(`/projects/${pid}/environments/${eid}`),
 
   listBuilds: (pid: string, tid: string) => api.get(`/projects/${pid}/templates/${tid}/builds`),
+
+  listCredentials: (pid: string) => api.get(`/projects/${pid}/credentials`),
+  createCredential: (pid: string, data: object) => api.post(`/projects/${pid}/credentials`, data),
+  updateCredential: (pid: string, cid: string, data: object) => api.put(`/projects/${pid}/credentials/${cid}`, data),
+  deleteCredential: (pid: string, cid: string) => api.delete(`/projects/${pid}/credentials/${cid}`),
   listSchedules: (id: string) => api.get(`/projects/${id}/schedules`),
   createSchedule: (id: string, data: object) => api.post(`/projects/${id}/schedules`, data),
   updateSchedule: (pid: string, sid: string, data: object) => api.put(`/projects/${pid}/schedules/${sid}`, data),

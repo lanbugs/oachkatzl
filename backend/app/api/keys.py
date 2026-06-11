@@ -28,6 +28,19 @@ def _build_secret(key_type: str, body: dict) -> str:
             "private_key": body.get("private_key") or "",
             "passphrase": body.get("passphrase") or "",
         }))
+    if key_type == "ssh_login":
+        return encrypt(json.dumps({
+            "private_key": body.get("private_key") or "",
+            "passphrase": body.get("passphrase") or "",
+            "login": body.get("login") or "",
+        }))
+    if key_type == "ssh_become":
+        return encrypt(json.dumps({
+            "private_key": body.get("private_key") or "",
+            "passphrase": body.get("passphrase") or "",
+            "login": body.get("login") or "",
+            "become_password": body.get("become_password") or "",
+        }))
     if key_type == "login_password":
         return encrypt(json.dumps({
             "login": body.get("login") or "",
@@ -70,7 +83,7 @@ def get_key(project_id, key_id):
 
 def _has_new_secret(key_type: str, body: dict) -> bool:
     """Return True if the request contains at least one non-empty secret field."""
-    if key_type == "ssh":
+    if key_type in ("ssh", "ssh_login", "ssh_become"):
         return bool(body.get("private_key"))
     if key_type == "login_password":
         return bool(body.get("login") or body.get("password"))

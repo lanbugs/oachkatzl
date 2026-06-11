@@ -61,9 +61,9 @@ def _key_file(private_key_pem: str, passphrase: str = "") -> str:
 
 
 def clone_or_update(
-    repo, workdir: str, debug: bool = False, on_line=None
+    repo, workdir: str, debug: bool = False, on_line=None, pin_commit: str = ""
 ) -> str:
-    """Clone or update repository into workdir. Returns HEAD commit hash."""
+    """Clone or update repository into workdir. Returns the used commit hash."""
     import git as gitpython
 
     def log(msg: str) -> None:
@@ -113,6 +113,10 @@ def clone_or_update(
             log(f"Cloning {url}  branch={branch}  →  {workdir}")
             os.makedirs(workdir, exist_ok=True)
             repo_obj = gitpython.Repo.clone_from(url, workdir, branch=branch, env=env)
+
+        if pin_commit:
+            repo_obj.git.checkout(pin_commit)
+            log(f"Pinned to commit {pin_commit[:8]}")
 
         commit = repo_obj.head.commit
         log(f"HEAD {commit.hexsha[:8]} — {commit.summary}")

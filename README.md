@@ -21,8 +21,10 @@ Ansible playbooks, shell scripts, python and more ...
 - **Projects & RBAC** — everything lives inside a project, with clearly defined roles (`owner`, `manager`, `task_runner`, `guest`).
 - **Task templates** — run `ansible`, `bash`, `python` or any admin-defined **custom app**; template types cover `task`, `build` and `deploy` workflows.
 - **Live log streaming** — stdout and stderr delivered in real time over WebSockets, with the full output archived in MongoDB for later retrieval.
-- **Inventories, repositories, environments & key store** — encrypted credentials for SSH keys, username/password pairs and Ansible Vault passwords.
-- **Survey variables** — interactive input prompts shown before a task runs, including support for secret fields.
+- **Inventories, repositories, environments & key store** — encrypted credentials for SSH keys (plain, with username, or with become password), username/password pairs and Ansible Vault passwords. Ansible connection variables (`ansible_user`, `ansible_password`, `ansible_become_password`) are injected automatically from the inventory key configuration.
+- **Custom Credentials** — admin-defined credential types with a free-form input schema and injector rules; inject values as environment variables, Ansible extra vars, or temporary files. Multiple credentials can be attached to a single template.
+- **Survey variables** — interactive input prompts shown before a task runs, supporting `string`, `int`, `enum`, `secret`, `bool` and visual separator types.
+- **Task replay** — re-run any completed task with the exact same survey answers, environment settings and git revision (commit hash is pinned automatically). Sensitive field names are masked in the run-parameter display.
 - **Schedules** — cron-based recurring runs powered by Celery Beat.
 - **Integrations & webhooks** — trigger templates via incoming webhooks authenticated with HMAC signatures or tokens, with flexible matchers and value extraction from the payload.
 - **Notifications** — send alerts to Email, Slack, Telegram, Teams, Rocket.Chat, DingTalk or Gotify.

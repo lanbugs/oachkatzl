@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { LayoutDashboard, FolderKanban, Users, Puzzle, LogOut, BookOpen, HelpCircle, Settings, Github, UserCircle } from 'lucide-vue-next'
+import { LayoutDashboard, FolderKanban, Users, Puzzle, LogOut, BookOpen, HelpCircle, Settings, Github, UserCircle, ShieldCheck } from 'lucide-vue-next'
 
 declare const __APP_VERSION__: string
 const appVersion = __APP_VERSION__
@@ -16,9 +16,10 @@ const nav = computed(() => [
   { name: 'Projects',  to: '/projects', icon: FolderKanban  },
   { name: 'Help',      to: '/help',     icon: HelpCircle    },
   ...(auth.isAdmin ? [
-    { name: 'Users',       to: '/admin/users',       icon: Users  },
-    { name: 'Custom Apps', to: '/admin/custom-apps', icon: Puzzle },
-    { name: 'Settings',   to: '/admin/settings',    icon: Settings },
+    { name: 'Users',             to: '/admin/users',             icon: Users       },
+    { name: 'Custom Apps',       to: '/admin/custom-apps',       icon: Puzzle      },
+    { name: 'Credential Types',  to: '/admin/credential-types',  icon: ShieldCheck },
+    { name: 'Settings',          to: '/admin/settings',          icon: Settings    },
   ] : []),
 ])
 

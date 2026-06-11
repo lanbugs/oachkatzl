@@ -5,6 +5,7 @@ const sections = [
   { id: 'overview',       label: 'Overview' },
   { id: 'projects',       label: 'Projects & Roles' },
   { id: 'keys',           label: 'Access Keys' },
+  { id: 'custom-creds',   label: 'Custom Credentials' },
   { id: 'repositories',   label: 'Repositories' },
   { id: 'inventories',    label: 'Inventories' },
   { id: 'environments',   label: 'Environments & Variables' },
@@ -33,11 +34,11 @@ function scrollTo(id: string) {
 
     <!-- Sticky sidebar nav -->
     <aside class="w-52 shrink-0">
-      <div class="sticky top-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div class="sticky top-4 bg-white border border-gray-200 rounded-xl overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col">
         <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
           <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documentation</p>
         </div>
-        <nav class="p-2 space-y-0.5">
+        <nav class="p-2 space-y-0.5 overflow-y-auto flex-1">
           <button
             v-for="s in sections" :key="s.id"
             @click="scrollTo(s.id)"
@@ -111,6 +112,163 @@ function scrollTo(id: string) {
 
           <div class="callout info">
             <strong>Editing secrets:</strong> When editing a key, leave the secret fields blank to keep the existing credential. Fill them to replace it.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Custom Credentials ── -->
+      <section id="custom-creds">
+        <h2 class="help-h2">Custom Credentials</h2>
+        <div class="prose-box">
+          <p>
+            Custom Credentials let you define your own credential schemas — input fields, labels, and
+            exactly <em>how</em> those values are injected into tasks (as environment variables,
+            Ansible extra vars, or temp files). Multiple credentials can be attached to a single template.
+          </p>
+
+          <div class="callout info">
+            <strong>Two-level concept:</strong>
+            An admin creates a <strong>Credential Type</strong> (the schema — what fields exist and how they are injected).
+            Project members then create <strong>Credentials</strong> based on that type (the actual values, encrypted).
+            Templates reference one or more Credentials.
+          </div>
+
+          <h3>Step 1 — Define a Credential Type (Admin)</h3>
+          <p>Open <strong>Credential Types</strong> in the left sidebar (visible to admins only) and click <em>New type</em>. Each type has two JSON fields:</p>
+
+          <h3>Inputs schema</h3>
+          <p>A JSON array describing the input fields users must fill in when creating a Credential of this type.</p>
+          <pre v-pre class="code-block">[
+  { "id": "username",    "label": "Username",    "type": "string",  "required": true  },
+  { "id": "password",    "label": "Password",    "type": "secret",  "required": true  },
+  { "id": "api_token",   "label": "API Token",   "type": "secret",  "required": false,
+    "help_text": "Leave blank to use username/password instead" },
+  { "id": "verify_ssl",  "label": "Verify SSL",  "type": "boolean", "required": false,
+    "default": true }
+]</pre>
+
+          <table class="help-table mt-2">
+            <tr><th>Field</th><th>Required</th><th>Description</th></tr>
+            <tr><td><code>id</code></td><td>yes</td><td>Internal identifier — used in injector templates as <code v-pre>{{ id }}</code>.</td></tr>
+            <tr><td><code>label</code></td><td>yes</td><td>Display name shown to users in the credential form.</td></tr>
+            <tr><td><code>type</code></td><td>yes</td><td><code>string</code>, <code>secret</code> (masked), <code>boolean</code></td></tr>
+            <tr><td><code>required</code></td><td>no</td><td>Whether the field must be filled. Default: <code>false</code>.</td></tr>
+            <tr><td><code>default</code></td><td>no</td><td>Pre-filled value in the form.</td></tr>
+            <tr><td><code>help_text</code></td><td>no</td><td>Short hint shown below the field.</td></tr>
+          </table>
+
+          <h3>Injectors schema</h3>
+          <p>
+            A JSON object with up to three sections — <code>env</code>, <code>extra_vars</code>, and <code>file</code> —
+            describing how the credential fields are passed to the process.
+            Use <code v-pre>{{ field_id }}</code> to reference a field value.
+          </p>
+          <pre v-pre class="code-block">{
+  "env": {
+    "MY_USERNAME":  "{{ username }}",
+    "MY_TOKEN":     "{{ api_token }}"
+  },
+  "extra_vars": {
+    "vault_user":   "{{ username }}",
+    "verify_ssl":   "{{ verify_ssl }}"
+  },
+  "file": {
+    "content": "{{ private_key }}",
+    "var":     "KEY_FILE_PATH"
+  }
+}</pre>
+
+          <table class="help-table mt-2">
+            <tr><th>Section</th><th>Effect</th></tr>
+            <tr>
+              <td><code>env</code></td>
+              <td>
+                Key/value pairs added to the process environment before execution.
+                Available in Bash as <code>$MY_USERNAME</code>, in Python as <code>os.environ["MY_USERNAME"]</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>extra_vars</code></td>
+              <td>
+                Merged into <code>--extra-vars</code> for Ansible playbooks.
+                Access as <code v-pre>{{ vault_user }}</code> in tasks and templates.
+                Also exported as env vars for Bash/Python.
+              </td>
+            </tr>
+            <tr>
+              <td><code>file</code></td>
+              <td>
+                Writes <code>content</code> to a temporary file (mode 0600) and injects its path
+                into the process environment under the name given by <code>var</code>.
+                The file is securely deleted after the task finishes.
+                Useful for private keys, certificates, kubeconfig files, etc.
+              </td>
+            </tr>
+          </table>
+
+          <h3>Step 2 — Create a Credential (Project)</h3>
+          <p>
+            Open the <strong>Keys &amp; Credentials</strong> tab inside your project and scroll down to the
+            <em>Credentials</em> section. Click <em>New credential</em> and select the credential type —
+            the form dynamically renders the input fields defined in that type's inputs schema.
+            Secret fields are masked and stored encrypted.
+          </p>
+          <p>Multiple credentials of the same type can exist in a project (e.g. "Prod API key" and "Staging API key").</p>
+
+          <h3>Step 3 — Attach credentials to a template</h3>
+          <p>
+            In the template editor, scroll to the <strong>Credentials</strong> section and check one or more
+            credentials from the project. At task run time, all attached credentials are resolved
+            and their injectors applied in order — env vars, extra vars, and file paths are all
+            available to the playbook or script.
+          </p>
+
+          <div class="callout info">
+            If two credentials inject the same environment variable or extra var, the one listed
+            <em>last</em> on the template wins.
+          </div>
+
+          <h3>Practical example — HashiCorp Vault token</h3>
+          <p><strong>Inputs schema:</strong></p>
+          <pre v-pre class="code-block">[
+  { "id": "vault_addr",  "label": "Vault Address", "type": "string", "required": true,
+    "default": "https://vault.example.com" },
+  { "id": "vault_token", "label": "Token",          "type": "secret", "required": true }
+]</pre>
+          <p><strong>Injectors schema:</strong></p>
+          <pre v-pre class="code-block">{
+  "env": {
+    "VAULT_ADDR":  "{{ vault_addr }}",
+    "VAULT_TOKEN": "{{ vault_token }}"
+  }
+}</pre>
+          <p>Any script or playbook attached to a template using this credential can now call the Vault CLI or SDK directly — the environment variables are already set.</p>
+
+          <h3>Practical example — kubeconfig file</h3>
+          <p><strong>Inputs schema:</strong></p>
+          <pre v-pre class="code-block">[
+  { "id": "kubeconfig", "label": "kubeconfig (YAML)", "type": "secret", "required": true,
+    "help_text": "Paste the full kubeconfig file content" }
+]</pre>
+          <p><strong>Injectors schema:</strong></p>
+          <pre v-pre class="code-block">{
+  "file": {
+    "content": "{{ kubeconfig }}",
+    "var":     "KUBECONFIG"
+  }
+}</pre>
+          <p>
+            Oachkatzl writes the kubeconfig content to a temp file, exports its path as
+            <code>$KUBECONFIG</code>, and deletes the file after the task finishes.
+            <code>kubectl</code> picks up the env var automatically.
+          </p>
+
+          <div class="callout warning">
+            <strong>Security:</strong> Field values whose <code>type</code> is <code>secret</code>
+            are stored encrypted in the database and never returned by the API.
+            They are only decrypted inside the worker process immediately before task execution.
+            Values containing <em>password</em>, <em>secret</em>, <em>token</em>, or <em>pass</em>
+            in the field ID are automatically masked in the task run-parameter display.
           </div>
         </div>
       </section>

@@ -13,6 +13,7 @@ from mongoengine import (
     StringField,
     DENY,
     NULLIFY,
+    PULL,
 )
 
 from app.models.project import Project
@@ -21,6 +22,7 @@ from app.models.inventory import Inventory
 from app.models.environment import Environment
 from app.models.view import View
 from app.models.access_key import AccessKey
+from app.models.credential import Credential
 
 APP_TYPES = ("ansible", "bash", "python")   # + custom app slugs validated in service
 TEMPLATE_TYPES = ("task", "build", "deploy")
@@ -67,4 +69,5 @@ class Template(Document):
     build_template = ReferenceField("self", null=True, reverse_delete_rule=NULLIFY)
     start_version  = StringField(default="")   # e.g. "1.0.0" — for type=build only
     autorun = BooleanField(default=False)
+    credentials = ListField(ReferenceField(Credential, reverse_delete_rule=PULL))
     created_at = DateTimeField(default=datetime.datetime.utcnow)

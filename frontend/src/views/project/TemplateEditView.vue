@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi } from '@/api/projects'
 import api from '@/api/client'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-vue-next'
@@ -18,6 +18,8 @@ const inventories = ref<any[]>([])
 const environments = ref<any[]>([])
 const keys = ref<any[]>([])
 const customApps = ref<any[]>([])
+const allCredentials = ref<any[]>([])
+const allCredentialTypes = ref<any[]>([])
 
 // ── Form state ───────────────────────────────────────────────────────────
 const form = ref({
@@ -50,6 +52,7 @@ interface SurveyVar {
 
 const surveyVars = ref<SurveyVar[]>([])
 const vaultKeys = ref<{ vault_id: string; name: string; key_id: string }[]>([])
+const selectedCredentialIds = ref<string[]>([])
 
 const saving = ref(false)
 const error = ref('')
@@ -72,19 +75,23 @@ const vaultKeysOptions = computed(() => keys.value.filter(k => k.type === 'vault
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 onMounted(async () => {
-  const [reposRes, invRes, envRes, keysRes, appsRes, tmplRes] = await Promise.all([
+  const [reposRes, invRes, envRes, keysRes, appsRes, tmplRes, credsRes, ctRes] = await Promise.all([
     projectsApi.listRepos(projectId.value),
     projectsApi.listInventories(projectId.value),
     projectsApi.listEnvironments(projectId.value),
     projectsApi.listKeys(projectId.value),
     api.get('/custom-apps'),
     projectsApi.listTemplates(projectId.value),
+    projectsApi.listCredentials(projectId.value),
+    api.get('/credential-types'),
   ])
   repos.value = reposRes.data
   inventories.value = invRes.data
   environments.value = envRes.data
   keys.value = keysRes.data
   customApps.value = appsRes.data
+  allCredentials.value = credsRes.data
+  allCredentialTypes.value = ctRes.data
   // Only build-type templates can be referenced by deploy templates
   const tmplItems: any[] = tmplRes.data?.items ?? tmplRes.data ?? []
   buildTemplateList.value = tmplItems.filter((t: any) => t.type === 'build')
@@ -118,6 +125,7 @@ onMounted(async () => {
       name: v.name || '',
       key_id: v.key_id || '',
     }))
+    selectedCredentialIds.value = data.credential_ids || []
   } else {
     argumentsRaw.value = ''
   }
@@ -183,6 +191,7 @@ async function save() {
         default: sv.default,
         values: sv.type === 'enum' ? sv.values.split('\n').map((v: string) => v.trim()).filter(Boolean) : [],
       })),
+      credential_ids: selectedCredentialIds.value,
       vaults: vaultKeys.value.filter(v => v.vault_id && v.key_id).map(v => ({
         vault_id: v.vault_id,
         name: v.name,
@@ -394,6 +403,41 @@ const playbookPlaceholder = computed(() => {
           <button type="button" @click="removeVault(i)" class="text-red-400 hover:text-red-600 pb-1">
             <Trash2 class="w-4 h-4" />
           </button>
+        </div>
+      </section>
+
+      <!-- Credentials -->
+      <section v-if="allCredentials.length > 0 || allCredentialTypes.length > 0"
+        class="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="font-medium text-gray-900">Credentials</h3>
+            <p class="text-xs text-gray-400 mt-0.5">Attach credentials whose values are injected at run time (env vars, extra vars, files).</p>
+          </div>
+        </div>
+
+        <div v-if="allCredentials.length === 0" class="text-sm text-gray-400">
+          No credentials in this project yet.
+          <RouterLink :to="`/projects/${projectId}/credentials`" class="text-brand-600 hover:underline ml-1">Create one →</RouterLink>
+        </div>
+
+        <div v-else class="space-y-2">
+          <div v-for="cred in allCredentials" :key="cred.id"
+            class="flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer"
+            :class="selectedCredentialIds.includes(cred.id)
+              ? 'border-brand-300 bg-brand-50'
+              : 'border-gray-200 hover:border-gray-300'"
+            @click="selectedCredentialIds.includes(cred.id)
+              ? selectedCredentialIds.splice(selectedCredentialIds.indexOf(cred.id), 1)
+              : selectedCredentialIds.push(cred.id)"
+          >
+            <input type="checkbox" :checked="selectedCredentialIds.includes(cred.id)"
+              class="rounded text-brand-600" @click.stop />
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-900">{{ cred.name }}</p>
+              <p class="text-xs text-gray-400">{{ cred.credential_type_name }}</p>
+            </div>
+          </div>
         </div>
       </section>
 

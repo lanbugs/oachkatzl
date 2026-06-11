@@ -33,6 +33,7 @@ def create_task(
     triggered_by: str = "manual",
     trigger_name: str = "",
     build_task_id: str | None = None,   # for deploy-type tasks
+    pin_commit: str = "",               # replay: pin to a specific git commit
 ) -> Task:
     task = Task(
         project=template.project,
@@ -47,6 +48,7 @@ def create_task(
         survey_answers=json.dumps(survey_answers or {}),
         triggered_by=triggered_by,
         trigger_name=trigger_name,
+        pin_commit=pin_commit,
     )
 
     # Build: auto-assign next version

@@ -60,8 +60,20 @@ def _tmpl_out(t) -> dict:
         "start_version":     t.start_version or "",
         "build_template_id": str(t.build_template.id) if t.build_template else None,
         "autorun":           bool(t.autorun),
+        "credential_ids":    [str(c.id) for c in (t.credentials or []) if c],
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
+
+
+def _resolve_credentials(ids: list, project) -> list:
+    from app.models.credential import Credential
+    result = []
+    for cid in (ids or []):
+        try:
+            result.append(Credential.objects.get(id=cid, project=project))
+        except Credential.DoesNotExist:
+            pass
+    return result
 
 
 def _build_vaults(vault_data: list, project) -> list:
@@ -145,6 +157,7 @@ def create_template(project_id, body):
         build_template=_resolve_ref(Template, body.get("build_template_id"), g.project)
             if body.get("type") == "deploy" else None,
         autorun=body.get("autorun", False),
+        credentials=_resolve_credentials(body.get("credential_ids", []), g.project),
     ).save()
     return _tmpl_out(t)
 
@@ -204,6 +217,7 @@ def update_template(project_id, template_id, body):
     t.start_version = body.get("start_version", t.start_version) if new_type == "build" else ""
     t.build_template = _resolve_ref(Template, body.get("build_template_id"), g.project) \
         if new_type == "deploy" else None
+    t.credentials = _resolve_credentials(body.get("credential_ids", []), g.project)
     t.save()
     return _tmpl_out(t)
 

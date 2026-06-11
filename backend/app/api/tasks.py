@@ -13,6 +13,7 @@ def _task_out(t) -> dict:
     return {
         "id": str(t.id),
         "template_id": str(t.template.id),
+        "template_name": t.template.name if t.template else "",
         "status": t.status,
         "debug": t.debug,
         "dry_run": t.dry_run,
@@ -29,6 +30,9 @@ def _task_out(t) -> dict:
         "exit_code":    t.exit_code,
         "triggered_by": t.triggered_by or "manual",
         "trigger_name": t.trigger_name or "",
+        "survey_answers":      t.survey_answers or "{}",
+        "environment_override": t.environment_override or "{}",
+        "arguments_override":   t.arguments_override or "[]",
     }
 
 
@@ -122,6 +126,7 @@ def start_task_by_template(project_id, template_id, body):
         arguments_override=args_override,
         survey_answers=survey,
         build_task_id=body.get("build_task_id"),
+        pin_commit=body.get("pin_commit") or "",
     )
     enqueue_task(task)
     return _task_out(task)

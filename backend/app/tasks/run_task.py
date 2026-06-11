@@ -112,6 +112,7 @@ def run_task(self, task_id: str) -> None:
             commit_hash = clone_or_update(
                 template.repository, workdir,
                 debug=task.debug, on_line=on_line,
+                pin_commit=task.pin_commit or "",
             )
             task.commit_hash = commit_hash
             task.save()
@@ -121,6 +122,11 @@ def run_task(self, task_id: str) -> None:
 
         from app.tasks.executor import build_env
         env, _ = build_env(task, workdir)
+
+        from app.tasks.apply_credentials import apply_credentials
+        cred_env, cred_extra_vars, cred_cleanup = apply_credentials(task)
+        env.update(cred_env)
+        cleanup_files.extend(cred_cleanup)
 
         app_type = template.app
         if app_type == "ansible":
@@ -137,7 +143,7 @@ def run_task(self, task_id: str) -> None:
             ).rstrip(":")
 
             galaxy_install(workdir, env, on_line, debug=task.debug)
-            cmd, cleanup_files = build_command(task, workdir)
+            cmd, cleanup_files = build_command(task, workdir, cred_extra_vars=cred_extra_vars)
         elif app_type == "bash":
             from app.tasks.apps.bash_app import build_command
             cmd, cleanup_files = build_command(task, workdir)

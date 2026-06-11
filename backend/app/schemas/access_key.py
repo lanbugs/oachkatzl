@@ -2,7 +2,7 @@ from apiflask.fields import Boolean, String
 from apiflask.schemas import Schema
 from marshmallow import validate
 
-KEY_TYPES = ("none", "ssh", "login_password", "vault")
+KEY_TYPES = ("none", "ssh", "ssh_login", "ssh_become", "login_password", "vault")
 
 
 class AccessKeyIn(Schema):
@@ -14,6 +14,7 @@ class AccessKeyIn(Schema):
     login = String(load_default=None)
     password = String(load_default=None)
     vault_password = String(load_default=None)
+    become_password = String(load_default=None)
 
 
 class AccessKeyOut(Schema):

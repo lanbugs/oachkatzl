@@ -6,7 +6,7 @@ from mongoengine import DateTimeField, Document, ReferenceField, StringField, DE
 
 from app.models.project import Project
 
-KEY_TYPES = ("none", "ssh", "login_password", "vault")
+KEY_TYPES = ("none", "ssh", "ssh_login", "ssh_become", "login_password", "vault")
 
 
 class AccessKey(Document):

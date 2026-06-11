@@ -13,16 +13,19 @@ class TaskStartIn(Schema):
     arguments_override = String(load_default="[]")
     survey_answers = String(load_default="{}")
     build_task_id = String(load_default=None)   # deploy-type: which build to deploy
+    pin_commit = String(load_default=None)       # replay: pin to a specific git commit
 
 
 class TaskOut(Schema):
     id = String()
     template_id = String()
+    template_name = String(dump_default="")
     status = String()
     debug = Boolean()
     dry_run = Boolean()
     diff = Boolean()
     user_id = String(dump_default=None)
+    username = String(dump_default=None)
     created_at = String()
     start = String(dump_default=None)
     end = String(dump_default=None)
@@ -33,6 +36,9 @@ class TaskOut(Schema):
     exit_code = Integer(dump_default=None)
     triggered_by = String(dump_default="manual")
     trigger_name = String(dump_default="")
+    survey_answers = String(dump_default="{}")
+    environment_override = String(dump_default="{}")
+    arguments_override = String(dump_default="[]")
 
 
 class TaskLogOut(Schema):

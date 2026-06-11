@@ -25,8 +25,8 @@ const emptyForm = () => ({
 })
 const form = ref(emptyForm())
 
-const sshKeys = computed(() => keys.value.filter(k => k.type === 'ssh'))
-const loginKeys = computed(() => keys.value.filter(k => k.type === 'ssh' || k.type === 'login_password'))
+const sshKeys = computed(() => keys.value.filter(k => ['ssh', 'ssh_login', 'ssh_become', 'login_password'].includes(k.type)))
+const loginKeys = computed(() => keys.value.filter(k => ['ssh', 'ssh_login', 'ssh_become', 'login_password'].includes(k.type)))
 
 onMounted(async () => {
   const [invRes, keysRes] = await Promise.all([
@@ -144,17 +144,17 @@ const typeLabels: Record<string, string> = {
         <!-- Keys -->
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">SSH key (user login)</label>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Login key (SSH key or username/password)</label>
             <select v-model="form.ssh_key_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="">— None —</option>
-              <option v-for="k in sshKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
+              <option v-for="k in sshKeys" :key="k.id" :value="k.id">{{ k.name }} ({{ k.type }})</option>
             </select>
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Become key (privilege escalation)</label>
             <select v-model="form.become_key_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
               <option value="">— None —</option>
-              <option v-for="k in loginKeys" :key="k.id" :value="k.id">{{ k.name }}</option>
+              <option v-for="k in loginKeys" :key="k.id" :value="k.id">{{ k.name }} ({{ k.type }})</option>
             </select>
           </div>
         </div>

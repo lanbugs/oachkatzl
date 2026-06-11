@@ -22,7 +22,7 @@ const allTabs = computed(() => [
   { name: 'Templates',     to: `/projects/${projectId.value}`,               icon: LayoutTemplate, exact: true,  minRole: 'guest'       as Role },
   { name: 'Tasks',         to: `/projects/${projectId.value}/tasks`,          icon: ListChecks,                   minRole: 'guest'       as Role },
   // resource tabs — manager+ only
-  { name: 'Keys',          to: `/projects/${projectId.value}/keys`,           icon: Key,                          minRole: 'manager'     as Role },
+  { name: 'Keys & Credentials', to: `/projects/${projectId.value}/keys`,     icon: Key,                          minRole: 'manager'     as Role },
   { name: 'Repositories',  to: `/projects/${projectId.value}/repositories`,   icon: GitBranch,                    minRole: 'manager'     as Role },
   { name: 'Inventories',   to: `/projects/${projectId.value}/inventories`,    icon: Server,                       minRole: 'manager'     as Role },
   { name: 'Environments',  to: `/projects/${projectId.value}/environments`,   icon: Variable,                     minRole: 'manager'     as Role },

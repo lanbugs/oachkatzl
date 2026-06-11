@@ -14,6 +14,8 @@ from app.models.notification import NotificationSetting
 from app.models.event import Event
 from app.models.option import Option
 from app.models.custom_app import CustomApp
+from app.models.credential_type import CredentialType
+from app.models.credential import Credential
 
 __all__ = [
     "User", "ApiToken",
@@ -32,4 +34,6 @@ __all__ = [
     "Event",
     "Option",
     "CustomApp",
+    "CredentialType",
+    "Credential",
 ]

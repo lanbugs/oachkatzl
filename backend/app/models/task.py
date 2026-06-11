@@ -50,6 +50,8 @@ class Task(Document):
     # How the task was triggered
     triggered_by = StringField(choices=("manual", "schedule", "token"), default="manual")
     trigger_name = StringField(default="")   # token name or empty
+    # If set, the worker checks out this specific commit instead of HEAD
+    pin_commit = StringField(default="")
 
 
 class TaskLog(Document):

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { projectsApi } from '@/api/projects'
 import { useProjectsStore } from '@/stores/projects'
 import { Key, Plus, Pencil, Trash2, X } from 'lucide-vue-next'
+import CredentialsView from './CredentialsView.vue'
 
 const route = useRoute()
 const store = useProjectsStore()
@@ -19,6 +20,7 @@ const emptyForm = () => ({
   private_key: '', passphrase: '',
   login: '', password: '',
   vault_password: '',
+  become_password: '',
 })
 const form = ref(emptyForm())
 
@@ -72,14 +74,17 @@ async function deleteKey(id: string) {
 
 const TYPE_LABELS: Record<string, string> = {
   none:          'None',
-  ssh:           'SSH',
+  ssh:           'SSH Key',
+  ssh_login:     'SSH Key + Username',
+  ssh_become:    'SSH Key + Become password',
   login_password:'Login / Password',
   vault:         'Ansible Vault',
 }
 </script>
 
 <template>
-  <div>
+  <div class="space-y-10">
+    <div>
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-lg font-medium text-gray-900">Access Keys</h2>
       <button v-if="store.canManage" @click="openCreate"
@@ -107,15 +112,17 @@ const TYPE_LABELS: Record<string, string> = {
             <select v-model="form.type"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
               <option value="none">None</option>
-              <option value="ssh">SSH</option>
+              <option value="ssh">SSH Key</option>
+              <option value="ssh_login">SSH Key + Username (ansible_user)</option>
+              <option value="ssh_become">SSH Key + Become password (ansible_become_password)</option>
               <option value="login_password">Login / Password</option>
               <option value="vault">Ansible Vault</option>
             </select>
           </div>
         </div>
 
-        <!-- SSH -->
-        <div v-if="form.type === 'ssh'" class="space-y-2">
+        <!-- SSH / SSH+Login / SSH+Become: shared private key + passphrase fields -->
+        <div v-if="form.type === 'ssh' || form.type === 'ssh_login' || form.type === 'ssh_become'" class="space-y-2">
           <p v-if="editId" class="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             Leave the fields below blank to keep the existing secret. Fill them to replace it.
           </p>
@@ -128,13 +135,39 @@ const TYPE_LABELS: Record<string, string> = {
               :placeholder="editId ? '— unchanged —' : '-----BEGIN OPENSSH PRIVATE KEY-----\n…'" />
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">
-              Passphrase{{ editId ? ' (optional)' : '' }}
-            </label>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Passphrase (optional)</label>
             <input v-model="form.passphrase" type="password"
               :placeholder="editId ? '— unchanged —' : ''"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
           </div>
+          <!-- SSH + Username: extra login field -->
+          <div v-if="form.type === 'ssh_login'">
+            <label class="block text-xs font-medium text-gray-600 mb-1">
+              Username <span class="font-normal text-gray-400">(injected as <code>ansible_user</code>)</span>
+            </label>
+            <input v-model="form.login"
+              :placeholder="editId ? '— unchanged —' : 'e.g. deploy'"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <!-- SSH + Become: username + become_password fields -->
+          <template v-if="form.type === 'ssh_become'">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">
+                Username <span class="font-normal text-gray-400">(injected as <code>ansible_user</code>)</span>
+              </label>
+              <input v-model="form.login"
+                :placeholder="editId ? '— unchanged —' : 'e.g. deploy'"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">
+                Become password <span class="font-normal text-gray-400">(injected as <code>ansible_become_password</code>)</span>
+              </label>
+              <input v-model="form.become_password" type="password"
+                :placeholder="editId ? '— unchanged —' : ''"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          </template>
         </div>
 
         <!-- Login / Password -->
@@ -207,6 +240,12 @@ const TYPE_LABELS: Record<string, string> = {
           </button>
         </div>
       </div>
+    </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="border-t border-gray-200 pt-2">
+      <CredentialsView />
     </div>
   </div>
 </template>
