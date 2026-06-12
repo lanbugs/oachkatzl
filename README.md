@@ -34,36 +34,6 @@ Ansible playbooks, shell scripts, python and more ...
 
 ---
 
-## 🔀 Workflows
-
-Workflows let you chain multiple task templates into a **directed acyclic graph (DAG)** and run them as a single unit.
-
-### Building a workflow
-
-Open a project, go to **Workflows → New workflow**. The visual canvas starts with a **START** node. Hover any node to reveal the **+** button and connect a new step:
-
-| Condition | Meaning |
-|-----------|---------|
-| ✓ **On Success** | Next node runs when the predecessor exits with code 0. |
-| ✗ **On Failure** | Next node runs when the predecessor fails or is stopped. |
-| → **Always** | Next node always runs after the predecessor finishes. |
-
-- Drag nodes to rearrange; positions are persisted.
-- Click a node to edit its template, label, or delete it.
-- Click **Auto-layout** (top-right of canvas) to re-arrange by execution order.
-
-### Execution model
-
-- Root nodes (directly connected from START) are launched in parallel.
-- A node with **multiple predecessors** uses **AND-join** semantics — it waits for *all* predecessors to finish; if any predecessor's outcome does not match the connecting edge type, the node is **skipped**.
-- The workflow reaches `success` when every failure is absorbed by a downstream `on failure` or `always` handler; otherwise it reaches `error`.
-
-### Notifications
-
-Workflow runs fire a **single summary notification** on completion. Per-task notifications are suppressed for tasks running inside a workflow to avoid alert noise. The *Suppress success alerts* flag on the workflow controls whether `success` notifications are sent at all.
-
----
-
 ## 🧱 Tech Stack
 
 | Layer            | Technology                                               |
@@ -168,6 +138,8 @@ docker compose logs api | grep "Admin password"
 
 The full list of variables is in [`.env.example`](.env.example).
 For the Docker Hub option place the file as `.env` next to `docker-compose.yml`; for the build-from-source option use `backend/.env`.
+
+---
 
 ## 🛠️ Local Development
 
