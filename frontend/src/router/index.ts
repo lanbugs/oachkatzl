@@ -34,6 +34,7 @@ const router = createRouter({
             { path: 'workflows/new', name: 'workflow-new', component: () => import('@/views/project/WorkflowEditView.vue') },
             { path: 'workflows/:workflowId/edit', name: 'workflow-edit', component: () => import('@/views/project/WorkflowEditView.vue') },
             { path: 'workflow-runs/:runId', name: 'workflow-run-detail', component: () => import('@/views/project/WorkflowRunView.vue') },
+            { path: 'artifact-caches', name: 'project-artifact-caches', component: () => import('@/views/project/ArtifactCachesView.vue') },
           ],
         },
         { path: 'admin/users', name: 'admin-users', component: () => import('@/views/admin/UsersView.vue'), meta: { admin: true } },

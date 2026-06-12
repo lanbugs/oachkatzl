@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from typing import Callable
+from urllib.parse import urlparse
 
 
 def _safe_script_path(workdir: str, rel_path: str, default: str) -> str:
@@ -58,8 +59,6 @@ def venv_install(
 
     # pip install -r requirements.txt
     on_line("[venv] Installing requirements.txt …")
-    if debug:
-        on_line(f"[venv] Running: {venv_pip} install -r {req_path}")
 
     # Upgrade pip first (silent) so we don't get noisy deprecation warnings
     subprocess.run(
@@ -67,10 +66,29 @@ def venv_install(
         capture_output=True, cwd=workdir, env=env,
     )
 
-    result = subprocess.run(
-        [venv_pip, "install", "-r", req_path],
-        capture_output=True, text=True, cwd=workdir, env=env,
-    )
+    def _pip_install(extra_args: list[str]) -> subprocess.CompletedProcess:
+        cmd = [venv_pip, "install", "-r", req_path] + extra_args
+        if debug:
+            on_line(f"[venv] Running: {' '.join(cmd)}")
+        return subprocess.run(cmd, capture_output=True, text=True, cwd=workdir, env=env)
+
+    # Build index-url args when a proxy is configured
+    index_args: list[str] = []
+    from app.config import settings
+    if settings.PIP_INDEX_URL:
+        index_args += ["--index-url", settings.PIP_INDEX_URL]
+        parsed = urlparse(settings.PIP_INDEX_URL)
+        if parsed.scheme == "http" and parsed.hostname:
+            index_args += ["--trusted-host", parsed.hostname]
+        on_line(f"[venv] Using pip index: {settings.PIP_INDEX_URL}")
+
+    result = _pip_install(index_args)
+
+    # If the proxy is unreachable and we were using one, retry directly against PyPI
+    if result.returncode != 0 and index_args:
+        on_line("[venv] Proxy unreachable or install failed — retrying directly from PyPI …")
+        result = _pip_install([])
+
     for line in result.stdout.splitlines():
         on_line(f"[venv] {line}")
     for line in result.stderr.splitlines():

@@ -70,4 +70,5 @@ class Template(Document):
     start_version  = StringField(default="")   # e.g. "1.0.0" — for type=build only
     autorun = BooleanField(default=False)
     credentials = ListField(ReferenceField(Credential, reverse_delete_rule=PULL))
+    artifact_cache = ReferenceField("app.models.artifact.ArtifactCache", null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)

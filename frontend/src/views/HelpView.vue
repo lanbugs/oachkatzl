@@ -14,6 +14,8 @@ const sections = [
   { id: 'survey',         label: 'Survey Variables' },
   { id: 'tasks',          label: 'Running Tasks' },
   { id: 'workflows',      label: 'Workflows' },
+  { id: 'artifacts',      label: 'Artifact Cache' },
+  { id: 'pip-proxy',      label: 'pip Package Proxy' },
   { id: 'scaling',        label: 'Scaling Workers' },
   { id: 'schedules',      label: 'Schedules' },
   { id: 'tokens',         label: 'Execute Tokens' },
@@ -389,7 +391,7 @@ function scrollTo(id: string) {
           <p>If a <code>requirements.txt</code> exists at the repository root, Oachkatzl automatically:</p>
           <ol>
             <li>Creates <code>.venv</code> in the working directory</li>
-            <li>Runs <code>pip install -r requirements.txt</code></li>
+            <li>Runs <code>pip install -r requirements.txt</code> — via proxy if <code>OACHKATZL_PIP_INDEX_URL</code> is set (see <a @click.prevent="scrollTo('pip-proxy')" href="#" class="text-brand-600 hover:underline">pip Package Proxy</a>)</li>
             <li>Executes the script with the venv Python</li>
           </ol>
 
@@ -622,6 +624,343 @@ kubectl rollout status deployment/myapp</pre>
         </div>
       </section>
 
+      <!-- ── Artifact Cache ── -->
+      <section id="artifacts">
+        <h2 class="help-h2">Artifact Cache</h2>
+        <div class="prose-box">
+          <p>
+            An <strong>Artifact Cache</strong> lets tasks persistently store files and JSON data during execution
+            and retrieve them later — from the same task, a downstream workflow node, or the project UI.
+            Each task run gets an injected <strong>token</strong> that authenticates all upload and list calls.
+          </p>
+
+          <h3>Setup</h3>
+          <ol>
+            <li>Open your project and navigate to <strong>Artifact Caches</strong> in the sidebar.</li>
+            <li>Click <em>New cache</em>, give it a name and a retention period (0 = never expire).</li>
+            <li>Open a template or workflow, scroll to the <strong>Artifact Cache</strong> section and select the cache.</li>
+          </ol>
+
+          <h3>Injected environment variables</h3>
+          <p>When a task starts and its template (or workflow) has a cache configured, Oachkatzl injects five variables into the subprocess environment:</p>
+          <table class="help-table">
+            <thead><tr><th>Variable</th><th>Reaches</th><th>Use when</th></tr></thead>
+            <tbody>
+              <tr><td><code>OACHKATZL_ARTIFACT_TOKEN</code></td><td colspan="2">Auth token for upload / list calls (scoped to this run).</td></tr>
+              <tr><td><code>OACHKATZL_ARTIFACT_URL</code></td><td>Internal Docker network (<code>http://api:5000</code>)</td><td>Script runs <em>inside</em> a Docker task (Bash, Python, Ansible on localhost).</td></tr>
+              <tr><td><code>OACHKATZL_ARTIFACT_LIST_URL</code></td><td>Internal Docker network</td><td>Same — listing artifacts from within the worker.</td></tr>
+              <tr><td><code>OACHKATZL_ARTIFACT_URL_EXT</code></td><td>External URL (<code>OACHKATZL_BASE_URL</code>)</td><td>Passing the URL to a remote host or an external system.</td></tr>
+              <tr><td><code>OACHKATZL_ARTIFACT_LIST_URL_EXT</code></td><td>External URL</td><td>Same — listing from an external system.</td></tr>
+            </tbody>
+          </table>
+          <div class="callout info">
+            <strong>Which URL to use?</strong>
+            Scripts that run directly on the worker container (Bash, Python, Ansible with <code>hosts: localhost</code>) should use <code>OACHKATZL_ARTIFACT_URL</code> — it goes directly to the API container over the Docker network, bypassing nginx.
+            Use <code>OACHKATZL_ARTIFACT_URL_EXT</code> only when you need to reach the API from a remote machine (e.g., passing the URL as an extra-var to an Ansible play that runs on an external host).
+          </div>
+
+          <div class="callout info">
+            <strong>Workflows:</strong> All nodes in a workflow share the <em>same token</em>. A downstream node can therefore read artifacts uploaded by an earlier node without any extra configuration.
+          </div>
+
+          <h3>Uploading a file — Shell / Bash</h3>
+          <pre v-pre class="code-block">#!/bin/bash
+# Upload a binary or text file
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -F "name=report.tar.gz" \
+  -F "file=@/tmp/report.tar.gz"
+
+# Upload a plain-text log
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -F "name=output.log" \
+  -F "file=@/var/log/myapp.log"</pre>
+
+          <h3>Uploading JSON — Shell / Bash</h3>
+          <pre v-pre class="code-block">#!/bin/bash
+# Upload a JSON object (any valid JSON value)
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "results.json", "data": {"hosts_ok": 5, "hosts_failed": 0}}'
+
+# Upload a JSON array (downloadable as CSV from the UI)
+PAYLOAD=$(jq -n '[
+  {"host":"web-01","status":"ok","changed":3},
+  {"host":"web-02","status":"ok","changed":1}
+]')
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"hosts.json\", \"data\": $PAYLOAD}"</pre>
+
+          <h3>Listing artifacts — Shell</h3>
+          <pre v-pre class="code-block">#!/bin/bash
+# Returns a JSON array of all artifacts in the current run
+curl -s "$OACHKATZL_ARTIFACT_LIST_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" | jq .
+
+# Example output:
+# [
+#   {"id": "abc123", "name": "results.json", "artifact_type": "json", "size_bytes": 82, ...},
+#   {"id": "def456", "name": "report.tar.gz", "artifact_type": "file", "size_bytes": 14302, ...}
+# ]</pre>
+
+          <h3>Downloading an artifact in a downstream task — Shell</h3>
+          <pre v-pre class="code-block">#!/bin/bash
+# Step 1: find the artifact by name
+AID=$(curl -s "$OACHKATZL_ARTIFACT_LIST_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  | jq -r '.[] | select(.name=="results.json") | .id')
+
+# Step 2: derive download URL from list URL
+BASE=$(echo "$OACHKATZL_ARTIFACT_LIST_URL" | sed 's|/list$||')
+
+# Step 3: download the file
+curl -s "$BASE/$AID/download" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -o /tmp/results.json
+
+cat /tmp/results.json</pre>
+
+          <h3>Uploading a file — Python</h3>
+          <pre v-pre class="code-block">import os, requests
+
+token = os.environ["OACHKATZL_ARTIFACT_TOKEN"]
+url   = os.environ["OACHKATZL_ARTIFACT_URL"]
+
+# File upload — do NOT set Content-Type here.
+# requests sets "multipart/form-data; boundary=..." automatically.
+# If Content-Type is already present in headers, requests will NOT override it,
+# and the server will reject the request with 400.
+file_headers = {"X-Artifact-Token": token}
+
+with open("/tmp/report.tar.gz", "rb") as f:
+    resp = requests.post(url, headers=file_headers,
+                         files={"file": f},
+                         data={"name": "report.tar.gz"})
+    resp.raise_for_status()
+    print("Uploaded:", resp.json())</pre>
+
+          <h3>Uploading JSON — Python</h3>
+          <pre v-pre class="code-block">import os, requests
+
+token = os.environ["OACHKATZL_ARTIFACT_TOKEN"]
+url   = os.environ["OACHKATZL_ARTIFACT_URL"]
+
+# JSON upload — use requests' json= parameter, which sets Content-Type automatically.
+# Alternatively pass headers={"X-Artifact-Token": token, "Content-Type": "application/json"}
+# and body=json.dumps(...) — but the json= shortcut is simpler and less error-prone.
+json_headers = {"X-Artifact-Token": token}
+
+data = {
+    "name": "scan_results.json",
+    "data": [
+        {"host": "web-01", "open_ports": [22, 80, 443]},
+        {"host": "db-01",  "open_ports": [22, 5432]},
+    ]
+}
+resp = requests.post(url, headers=json_headers, json=data)
+resp.raise_for_status()
+print("Artifact ID:", resp.json()["id"])</pre>
+
+          <h3>Reading artifacts in a downstream task — Python</h3>
+          <pre v-pre class="code-block">import os, requests
+
+token    = os.environ["OACHKATZL_ARTIFACT_TOKEN"]
+list_url = os.environ["OACHKATZL_ARTIFACT_LIST_URL"]
+headers  = {"X-Artifact-Token": token}
+
+# List all artifacts in this run (includes those from earlier nodes)
+artifacts = requests.get(list_url, headers=headers).json()
+
+# Find and download a specific artifact
+for art in artifacts:
+    if art["name"] == "scan_results.json":
+        base = list_url.replace("/list", "")
+        content = requests.get(f"{base}/{art['id']}/download",
+                               headers=headers).json()
+        print(content)
+        break</pre>
+
+          <h3>Uploading a file — Ansible</h3>
+          <p>Use the <code>uri</code> module to call the artifact API from within a playbook. The injected environment variables are available via <code>ansible.builtin.shell</code> or directly as Jinja2 lookups.</p>
+          <pre v-pre class="code-block">---
+- name: Upload artifact from Ansible
+  hosts: localhost
+  gather_facts: false
+  tasks:
+
+    # 1. Read injected variables from the worker environment
+    - name: Get artifact vars
+      ansible.builtin.set_fact:
+        artifact_token: "{{ lookup('env', 'OACHKATZL_ARTIFACT_TOKEN') }}"
+        artifact_url:   "{{ lookup('env', 'OACHKATZL_ARTIFACT_URL') }}"
+
+    # 2. Upload a JSON report
+    #    Important: do NOT set Content-Type in headers when using body_format: json.
+    #    body_format: json sets it automatically AND handles serialisation.
+    #    Adding Content-Type manually can prevent Ansible from serialising the body,
+    #    causing the server to receive a raw Python dict string instead of valid JSON.
+    - name: Upload JSON report
+      ansible.builtin.uri:
+        url: "{{ artifact_url }}"
+        method: POST
+        headers:
+          X-Artifact-Token: "{{ artifact_token }}"
+        body_format: json
+        body:
+          name: "ansible_report.json"
+          data:
+            play: "{{ ansible_play_name }}"
+            hosts_ok: "{{ ansible_stats.ok | default({}) | length }}"
+        status_code: [200, 201]
+      register: upload_result
+
+    - name: Show artifact ID
+      ansible.builtin.debug:
+        msg: "Stored with ID {{ upload_result.json.id }}"
+
+    # 3. Upload a file (e.g., a generated archive)
+    - name: Upload tar archive
+      ansible.builtin.shell: |
+        curl -s -X POST "{{ artifact_url }}" \
+          -H "X-Artifact-Token: {{ artifact_token }}" \
+          -F "name=backup.tar.gz" \
+          -F "file=@/tmp/backup.tar.gz"</pre>
+
+          <h3>Reading artifacts from an earlier node — Ansible</h3>
+          <pre v-pre class="code-block">---
+- name: Download artifact uploaded by a previous workflow node
+  hosts: localhost
+  gather_facts: false
+  tasks:
+
+    - name: Get artifact vars
+      ansible.builtin.set_fact:
+        artifact_token:    "{{ lookup('env', 'OACHKATZL_ARTIFACT_TOKEN') }}"
+        artifact_list_url: "{{ lookup('env', 'OACHKATZL_ARTIFACT_LIST_URL') }}"
+
+    - name: List artifacts
+      ansible.builtin.uri:
+        url: "{{ artifact_list_url }}"
+        method: GET
+        headers:
+          X-Artifact-Token: "{{ artifact_token }}"
+        return_content: true
+      register: artifact_list
+
+    - name: Find scan_results.json
+      ansible.builtin.set_fact:
+        scan_artifact: >-
+          {{ artifact_list.json
+             | selectattr('name', 'equalto', 'scan_results.json')
+             | first }}
+
+    - name: Download artifact
+      ansible.builtin.uri:
+        url: "{{ artifact_list_url | regex_replace('/list$', '') }}/{{ scan_artifact.id }}/download"
+        method: GET
+        headers:
+          X-Artifact-Token: "{{ artifact_token }}"
+        return_content: true
+      register: scan_data
+
+    - name: Show scan results
+      ansible.builtin.debug:
+        var: scan_data.json</pre>
+
+          <h3>Viewing and downloading artifacts in the UI</h3>
+          <ul>
+            <li>Open a task and switch to the <strong>Artifacts</strong> tab to see all artifacts for that run.</li>
+            <li>Files download directly. JSON artifacts can be downloaded as <em>native JSON</em> or as <em>CSV</em> (a list-of-objects structure is automatically converted with headers).</li>
+            <li>Browse all runs for a cache under <strong>Project → Artifact Caches</strong>.</li>
+          </ul>
+
+          <h3>Upload API reference</h3>
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td colspan="3" class="text-xs text-gray-400 font-semibold uppercase bg-gray-50">File upload — multipart/form-data</td></tr>
+              <tr><td><code>name</code></td><td>string (required)</td><td>Artifact display name (e.g. <code>report.tar.gz</code>).</td></tr>
+              <tr><td><code>file</code></td><td>file (required)</td><td>The file to upload. Content-Type is detected automatically.</td></tr>
+              <tr><td colspan="3" class="text-xs text-gray-400 font-semibold uppercase bg-gray-50">JSON upload — application/json body</td></tr>
+              <tr><td><code>name</code></td><td>string (required)</td><td>Artifact display name (e.g. <code>results.json</code>).</td></tr>
+              <tr><td><code>data</code></td><td>any JSON (required)</td><td>The JSON value to store. A top-level array of objects enables CSV export.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout warning">
+            <strong>Token scope:</strong> The artifact token is scoped to a single run. It cannot be used to read or write artifacts from other runs or other caches. The token expires with the run's retention period.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── pip Package Proxy ── -->
+      <section id="pip-proxy">
+        <h2 class="help-h2">pip Package Proxy</h2>
+        <div class="prose-box">
+          <p>
+            By default pip downloads packages from PyPI on every Python task run. A <strong>caching proxy</strong>
+            (devpi or any PEP 503-compatible server) eliminates repeat downloads: packages are fetched once
+            and served locally on all subsequent runs — including runs on other workers.
+          </p>
+
+          <h3>How it works</h3>
+          <p>Set <code>OACHKATZL_PIP_INDEX_URL</code> on the worker. Oachkatzl passes it as <code>--index-url</code>
+          to every <code>pip install</code> invocation. For HTTP-only proxies the required <code>--trusted-host</code>
+          flag is added automatically.</p>
+
+          <div class="callout info">
+            <strong>Automatic fallback:</strong> If the proxy is unreachable or pip exits with an error,
+            Oachkatzl immediately retries the install directly against PyPI. Tasks never fail solely because
+            the proxy is down or temporarily unavailable.
+          </div>
+
+          <h3>Docker Compose setup (included)</h3>
+          <p>Both <code>docker-compose.yml</code> and <code>docker-compose.hub.yml</code> include a
+          pre-configured <strong>devpi</strong> service. The worker is already wired to use it — no manual
+          configuration needed for a single-node setup.</p>
+
+          <table class="help-table">
+            <thead><tr><th>Service / Port</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>devpi</code> — port <code>3141</code></td><td>Caching pip proxy, reachable inside Docker as <code>http://devpi:3141</code> and from the host as <code>http://&lt;host&gt;:3141</code>.</td></tr>
+              <tr><td><code>pip_cache</code> volume</td><td>pip HTTP cache mounted into the worker at <code>/root/.cache/pip</code> — speeds up even the proxy-miss case.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Distributed / remote workers</h3>
+          <p>
+            Workers outside the Docker network set <code>OACHKATZL_PIP_INDEX_URL</code> to the external
+            devpi URL. Workers that cannot reach devpi simply leave the variable unset and use PyPI directly.
+          </p>
+          <pre v-pre class="code-block"># .env on a remote worker — point to the devpi instance on the main host
+OACHKATZL_PIP_INDEX_URL=http://10.62.4.5:3141/root/pypi/+simple/</pre>
+
+          <h3>Using a different proxy</h3>
+          <p>Any PEP 503-compatible index works — Nexus Repository, Artifactory, pypiserver, etc.:</p>
+          <pre v-pre class="code-block"># Nexus / Artifactory
+OACHKATZL_PIP_INDEX_URL=https://nexus.example.com/repository/pypi-proxy/simple/
+
+# pypiserver (self-hosted, no caching — serves pre-downloaded packages)
+OACHKATZL_PIP_INDEX_URL=http://pypiserver.example.com/simple/</pre>
+
+          <h3>Environment variable reference</h3>
+          <table class="help-table">
+            <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>OACHKATZL_PIP_INDEX_URL</code></td>
+                <td><em>empty</em></td>
+                <td>pip <code>--index-url</code>. Empty = PyPI. HTTP URLs get <code>--trusted-host</code> added automatically.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- ── Scaling Workers ── -->
       <section id="scaling">
         <h2 class="help-h2">Scaling Workers</h2>
@@ -630,18 +969,18 @@ kubectl rollout status deployment/myapp</pre>
 
           <h3>Option 1 — Increase concurrency of a single worker</h3>
           <p>Set the <code>WORKER_CONCURRENCY</code> environment variable on the worker service and rebuild:</p>
-          <pre class="code-block">worker:
+          <pre v-pre class="code-block">worker:
   environment:
     WORKER_CONCURRENCY: 8   # default: 4</pre>
           <p>This is the simplest option and works well if your tasks are I/O-bound (waiting for SSH connections, API calls, etc.).</p>
 
           <h3>Option 2 — Spawn additional worker containers</h3>
           <p>Use <code>docker compose up --scale</code> to run multiple worker replicas:</p>
-          <pre class="code-block"># Start 3 worker containers (each with its own concurrency)
+          <pre v-pre class="code-block"># Start 3 worker containers (each with its own concurrency)
 docker compose up -d --scale worker=3</pre>
 
           <p>You can also add the <code>deploy.replicas</code> setting permanently in your <code>docker-compose.yml</code>:</p>
-          <pre class="code-block">worker:
+          <pre v-pre class="code-block">worker:
   # ... existing config ...
   deploy:
     replicas: 3</pre>
@@ -657,7 +996,7 @@ docker compose up -d --scale worker=3</pre>
           <p>The <code>beat</code> service (Celery Beat) must run as a <strong>single instance only</strong>. Running multiple Beat replicas causes duplicate task submissions. Always keep <code>replicas: 1</code> for the beat service.</p>
 
           <h3>Checking worker status</h3>
-          <pre class="code-block"># List active workers and their queues
+          <pre v-pre class="code-block"># List active workers and their queues
 docker compose exec worker celery -A app.celery_app inspect active
 
 # Monitor via Flower (if enabled)
@@ -703,7 +1042,7 @@ docker compose exec worker celery -A app.celery_app inspect active
           </ol>
 
           <h3>Triggering a run</h3>
-          <pre class="code-block"># Simple trigger
+          <pre v-pre class="code-block"># Simple trigger
 curl -X POST "https://oachkatzl.example.com/api/execute/&lt;token&gt;"
 
 # With survey variable overrides
@@ -712,7 +1051,7 @@ curl -X POST "https://oachkatzl.example.com/api/execute/&lt;token&gt;" \
   -d '{"survey_answers": {"env": "production", "version": "2.1.0"}}'</pre>
 
           <p>The response contains the <code>task_id</code> which can be used to poll the task status:</p>
-          <pre class="code-block">GET /api/projects/&lt;project_id&gt;/tasks/&lt;task_id&gt;</pre>
+          <pre v-pre class="code-block">GET /api/projects/&lt;project_id&gt;/tasks/&lt;task_id&gt;</pre>
 
           <h3>Survey answer precedence</h3>
           <ol>

@@ -33,6 +33,23 @@ services:
     expose:
       - "5000"
 
+  # pip caching proxy — workers pull packages from here instead of PyPI directly.
+  # First request fetches from PyPI and caches; subsequent requests are served locally.
+  # Remote workers can reach it via OACHKATZL_PIP_INDEX_URL=http://<host>:3141/root/pypi/+simple/
+  devpi:
+    image: muccg/devpi
+    restart: unless-stopped
+    volumes:
+      - devpi_data:/data
+    ports:
+      - "3141:3141"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3141/root/pypi/+simple/ -o /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   worker:
     image: lanbugsde/oachkatzl-worker:latest
     command: celery -A worker.celery worker -l info -c 4
@@ -40,9 +57,13 @@ services:
     depends_on:
       mongo: { condition: service_healthy }
       redis: { condition: service_healthy }
+      devpi: { condition: service_started }
     env_file: .env
+    environment:
+      OACHKATZL_PIP_INDEX_URL: "http://devpi:3141/root/pypi/+simple/"
     volumes:
       - /tmp/oachkatzl:/tmp/oachkatzl
+      - pip_cache:/root/.cache/pip
 
   beat:
     image: lanbugsde/oachkatzl-worker:latest
@@ -64,3 +85,5 @@ services:
 volumes:
   mongo_data:
   redis_data:
+  devpi_data:
+  pip_cache:

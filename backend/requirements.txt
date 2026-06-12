@@ -20,6 +20,7 @@ requests>=2.32.0
 croniter>=2.0.5
 ldap3>=2.9.1
 flask-limiter>=3.5.0
+paramiko
 
 # test
 pytest>=8.1.0

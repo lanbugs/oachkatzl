@@ -156,7 +156,7 @@ def _find_root_nodes(wf_nodes: list) -> list[str]:
 # Task creation helper
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _start_node_task(node, run, survey_dict: dict):
+def _start_node_task(node, run, survey_dict: dict, artifact_run=None):
     """Create and enqueue a Task for a single workflow node.
 
     Returns the created Task, or None if the node has no template or task
@@ -181,6 +181,7 @@ def _start_node_task(node, run, survey_dict: dict):
             survey_answers=survey_dict,
             triggered_by="workflow",
             trigger_name=str(run.id),
+            artifact_run=artifact_run,
         )
         enqueue_task(task)
         return task
@@ -218,6 +219,22 @@ def start_workflow(self, workflow_run_id: str) -> None:
         except (json.JSONDecodeError, TypeError):
             survey_dict = {}
 
+        # Create a shared ArtifactRun for the whole workflow run (if cache configured)
+        artifact_run = None
+        try:
+            cache = wf.artifact_cache
+            if cache:
+                import redis as _redis_lib
+                from app.config import settings as _cfg
+                from app.services.artifact_service import create_artifact_run
+                artifact_run, raw_token = create_artifact_run(cache=cache, workflow_run=run)
+                run.artifact_run = artifact_run
+                _r = _redis_lib.from_url(_cfg.REDIS_URL)
+                _r.setex(f"artifact_token:{artifact_run.id}", 3600, raw_token)
+        except Exception as exc:
+            log.warning("Artifact run setup failed for workflow %s: %s", workflow_run_id, exc)
+            artifact_run = None
+
         # Initialise a WorkflowNodeRun for every node
         node_runs = [
             WorkflowNodeRun(node_id=n.node_id, status="pending")
@@ -231,7 +248,7 @@ def start_workflow(self, workflow_run_id: str) -> None:
             nr = nr_map.get(root_id)
             if node is None or nr is None:
                 continue
-            task = _start_node_task(node, run, survey_dict)
+            task = _start_node_task(node, run, survey_dict, artifact_run=artifact_run)
             if task is not None:
                 nr.status = "running"
                 nr.task_id = str(task.id)
@@ -325,7 +342,9 @@ def advance_workflow(self, workflow_run_id: str) -> None:
             if decision == "start":
                 log.debug("Workflow %s: starting node %s", workflow_run_id, nr.node_id)
                 if node:
-                    task = _start_node_task(node, run, survey_dict)
+                    # Pass the workflow-level artifact_run so all nodes share the same token
+                    wf_artifact_run = run.artifact_run if run.artifact_run else None
+                    task = _start_node_task(node, run, survey_dict, artifact_run=wf_artifact_run)
                     if task is not None:
                         nr.status = "running"
                         nr.task_id = str(task.id)

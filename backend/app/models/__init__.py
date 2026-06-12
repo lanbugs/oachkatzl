@@ -5,6 +5,8 @@ from app.models.repository import Repository
 from app.models.inventory import Inventory
 from app.models.environment import Environment
 from app.models.view import View
+# artifact must be imported before Template/Task/WorkflowRun which reference it via string
+from app.models.artifact import ArtifactCache, ArtifactRun, Artifact
 from app.models.template import Template, SurveyVar
 from app.models.schedule import Schedule
 from app.models.task import Task, TaskLog
@@ -40,4 +42,5 @@ __all__ = [
     "Credential",
     "WorkflowTemplate", "WorkflowNode",
     "WorkflowRun", "WorkflowNodeRun",
+    "ArtifactCache", "ArtifactRun", "Artifact",
 ]

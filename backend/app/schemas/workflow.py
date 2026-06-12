@@ -35,6 +35,7 @@ class WorkflowTemplateIn(Schema):
     survey_vars = List(Nested(SurveyVarIn), load_default=[])
     allow_parallel = Boolean(load_default=False)
     suppress_success_alerts = Boolean(load_default=False)
+    artifact_cache_id = String(load_default=None)
 
 
 class WorkflowTemplateOut(Schema):
@@ -46,6 +47,7 @@ class WorkflowTemplateOut(Schema):
     survey_vars = List(Nested(SurveyVarOut))
     allow_parallel = Boolean()
     suppress_success_alerts = Boolean()
+    artifact_cache_id = String(dump_default=None)
     created_at = String()
 
 

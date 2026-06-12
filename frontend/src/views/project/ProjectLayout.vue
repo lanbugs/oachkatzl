@@ -3,7 +3,7 @@ import { onMounted, computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
 import { useAuthStore } from '@/stores/auth'
-import { LayoutTemplate, ListChecks, Key, GitBranch, Users, Server, Variable, Clock, Bell, GitMerge } from 'lucide-vue-next'
+import { LayoutTemplate, ListChecks, Key, GitBranch, Users, Server, Variable, Clock, Bell, GitMerge, Archive } from 'lucide-vue-next'
 
 const route = useRoute()
 const store = useProjectsStore()
@@ -27,8 +27,9 @@ const allTabs = computed(() => [
   { name: 'Repositories',  to: `/projects/${projectId.value}/repositories`,   icon: GitBranch,                    minRole: 'manager'     as Role },
   { name: 'Inventories',   to: `/projects/${projectId.value}/inventories`,    icon: Server,                       minRole: 'manager'     as Role },
   { name: 'Environments',  to: `/projects/${projectId.value}/environments`,   icon: Variable,                     minRole: 'manager'     as Role },
-  { name: 'Schedules',     to: `/projects/${projectId.value}/schedules`,      icon: Clock,                        minRole: 'manager'     as Role },
-  { name: 'Notifications', to: `/projects/${projectId.value}/notifications`,  icon: Bell,                         minRole: 'manager'     as Role },
+  { name: 'Schedules',     to: `/projects/${projectId.value}/schedules`,        icon: Clock,                        minRole: 'manager'     as Role },
+  { name: 'Notifications', to: `/projects/${projectId.value}/notifications`,   icon: Bell,                         minRole: 'manager'     as Role },
+  { name: 'Artifact Caches', to: `/projects/${projectId.value}/artifact-caches`, icon: Archive,                   minRole: 'manager'     as Role },
   // admin tabs — owner only
   { name: 'Members',       to: `/projects/${projectId.value}/members`,        icon: Users,                        minRole: 'owner'       as Role },
 ])

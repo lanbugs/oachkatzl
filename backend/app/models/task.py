@@ -52,6 +52,8 @@ class Task(Document):
     trigger_name = StringField(default="")   # token name / workflow_run_id
     # If set, the worker checks out this specific commit instead of HEAD
     pin_commit = StringField(default="")
+    # Artifact run associated with this task (set when template has artifact_cache)
+    artifact_run = ReferenceField("app.models.artifact.ArtifactRun", null=True)
 
 
 class TaskLog(Document):

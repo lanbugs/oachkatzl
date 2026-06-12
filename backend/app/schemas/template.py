@@ -57,7 +57,8 @@ class TemplateIn(Schema):
     start_version     = String(load_default="")    # "x.y.z" — build type only
     build_template_id = String(load_default=None)  # deploy type: source build template
     autorun = Boolean(load_default=False)
-    credential_ids    = List(String(), load_default=[])
+    credential_ids     = List(String(), load_default=[])
+    artifact_cache_id  = String(load_default=None)
 
 
 class TemplateOut(Schema):
@@ -79,6 +80,7 @@ class TemplateOut(Schema):
     vaults            = List(Nested(VaultRefOut))
     start_version     = String(dump_default="")
     build_template_id = String(dump_default=None)
-    autorun           = Boolean(dump_default=False)
-    credential_ids    = List(String(), dump_default=[])
+    autorun            = Boolean(dump_default=False)
+    credential_ids     = List(String(), dump_default=[])
+    artifact_cache_id  = String(dump_default=None)
     created_at = String()

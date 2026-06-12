@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi } from '@/api/projects'
-import { StopCircle, Loader2, RotateCcw } from 'lucide-vue-next'
+import { StopCircle, Loader2, RotateCcw, Download, FileJson, FileText } from 'lucide-vue-next'
 import { formatLogLine } from '@/composables/useAnsi'
 
 const route = useRoute()
@@ -15,6 +15,39 @@ const logLines = ref<string[]>([])
 const stopping = ref(false)
 const replaying = ref(false)
 const logEl = ref<HTMLElement | null>(null)
+const artifacts = ref<any[]>([])
+const activeTab = ref<'logs' | 'artifacts'>('logs')
+
+async function loadArtifacts() {
+  try {
+    const { data } = await projectsApi.getTaskArtifacts(projectId.value, taskId.value)
+    artifacts.value = data
+  } catch {
+    artifacts.value = []
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+async function downloadArtifact(art: any, format?: string) {
+  import('@/api/client').then(async ({ default: api }) => {
+    const url = `/artifacts/${art.id}/download${format ? `?format=${format}` : ''}`
+    const { data, headers } = await api.get(url, { responseType: 'blob' })
+    const blob = new Blob([data], { type: headers['content-type'] || 'application/octet-stream' })
+    const objectUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = objectUrl
+    a.download = format === 'csv'
+      ? (art.name.endsWith('.csv') ? art.name : art.name + '.csv')
+      : art.name
+    a.click()
+    URL.revokeObjectURL(objectUrl)
+  })
+}
 
 const RUNNING = new Set(['waiting', 'starting', 'running'])
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -69,6 +102,7 @@ async function init() {
   stopPoll()
   await poll()
   if (isRunning()) startPoll()
+  await loadArtifacts()
 }
 
 onMounted(init)
@@ -262,8 +296,22 @@ const statusLabel: Record<string, string> = {
       </div>
     </div>
 
+    <!-- Tabs -->
+    <div class="flex gap-0.5 border-b border-gray-200 mb-4">
+      <button @click="activeTab = 'logs'"
+        :class="activeTab === 'logs' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+        class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors">
+        Logs
+      </button>
+      <button v-if="artifacts.length > 0" @click="activeTab = 'artifacts'"
+        :class="activeTab === 'artifacts' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+        class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors">
+        Artifacts ({{ artifacts.length }})
+      </button>
+    </div>
+
     <!-- Log -->
-    <div
+    <div v-show="activeTab === 'logs'"
       ref="logEl"
       class="bg-gray-950 rounded-xl p-4 font-mono text-xs text-gray-200 overflow-y-auto"
       style="max-height: 70vh; min-height: 200px"
@@ -277,6 +325,32 @@ const statusLabel: Record<string, string> = {
         class="leading-5 whitespace-pre-wrap break-all"
         v-html="formatLogLine(line)"
       />
+    </div>
+
+    <!-- Artifacts tab -->
+    <div v-if="activeTab === 'artifacts'" class="space-y-2">
+      <div v-for="art in artifacts" :key="art.id"
+        class="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-4 py-3">
+        <div class="flex items-center gap-3">
+          <component :is="art.artifact_type === 'json' ? FileJson : FileText" class="w-4 h-4 text-gray-400" />
+          <div>
+            <p class="text-sm font-medium text-gray-900">{{ art.name }}</p>
+            <p class="text-xs text-gray-400">{{ formatBytes(art.size_bytes) }} · {{ art.artifact_type }}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button type="button" @click="downloadArtifact(art)"
+            class="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 px-2 py-1 rounded hover:bg-brand-50 transition-colors">
+            <Download class="w-3.5 h-3.5" />
+            {{ art.artifact_type === 'file' ? 'Download' : 'JSON' }}
+          </button>
+          <button v-if="art.artifact_type === 'json' && art.is_tabular" type="button" @click="downloadArtifact(art, 'csv')"
+            class="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100 transition-colors">
+            <Download class="w-3.5 h-3.5" />
+            CSV
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Timestamps -->

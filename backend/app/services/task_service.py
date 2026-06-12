@@ -34,6 +34,7 @@ def create_task(
     trigger_name: str = "",
     build_task_id: str | None = None,   # for deploy-type tasks
     pin_commit: str = "",               # replay: pin to a specific git commit
+    artifact_run=None,                  # pre-created ArtifactRun (workflow shared token)
 ) -> Task:
     task = Task(
         project=template.project,
@@ -50,6 +51,8 @@ def create_task(
         trigger_name=trigger_name,
         pin_commit=pin_commit,
     )
+    if artifact_run is not None:
+        task.artifact_run = artifact_run
 
     # Build: auto-assign next version
     if template.type == "build" and template.start_version:

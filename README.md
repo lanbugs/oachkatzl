@@ -26,6 +26,8 @@ Ansible playbooks, shell scripts, python and more ...
 - **Survey variables** — interactive input prompts shown before a task runs, supporting `string`, `int`, `enum`, `secret`, `bool` and visual separator types.
 - **Task replay** — re-run any completed task with the exact same survey answers, environment settings and git revision (commit hash is pinned automatically). Sensitive field names are masked in the run-parameter display.
 - **Workflows** — chain templates into a directed graph with per-edge conditions (`on success`, `on failure`, `always`); AND-join semantics, interactive drag-and-drop canvas editor, live run view with per-node status, and a single summary notification per run.
+- **Artifact Cache** — tasks upload files and JSON to a project-scoped cache via a token-authenticated REST API (`OACHKATZL_ARTIFACT_TOKEN` / `OACHKATZL_ARTIFACT_URL` injected automatically). Workflow nodes share one token so downstream tasks can consume upstream artifacts. Browse, download and CSV-export directly from the UI. Configurable data retention.
+- **pip package proxy** — optional [devpi](https://devpi.net/) caching proxy included in the Docker Compose stack. Set `OACHKATZL_PIP_INDEX_URL` on any worker and packages are fetched from PyPI once, then served locally. Remote workers in distributed setups point to the same proxy over the network; if the proxy is unavailable the worker falls back to PyPI automatically.
 - **Schedules** — cron-based recurring runs powered by Celery Beat.
 - **Integrations & webhooks** — trigger templates via incoming webhooks authenticated with HMAC signatures or tokens, with flexible matchers and value extraction from the payload.
 - **Notifications** — send alerts to Email, Slack, Telegram, Teams, Rocket.Chat, DingTalk or Gotify; workflow runs fire a single summary notification instead of one per task.
@@ -126,15 +128,18 @@ docker compose logs api | grep "Admin password"
 
 ### ⚙️ Key Environment Variables
 
-| Variable                                | Description                                              |
-|-----------------------------------------|----------------------------------------------------------|
-| `OACHKATZL_MONGO_URI`                   | MongoDB connection string                                |
-| `OACHKATZL_REDIS_URL`                   | Redis URL (broker, backplane, pub/sub)                   |
-| `OACHKATZL_JWT_SECRET`                  | Secret used to sign JWT tokens                           |
-| `OACHKATZL_ENCRYPTION_KEY`             | Fernet key for encrypting secrets stored in the database |
-| `OACHKATZL_ADMIN_USER/_PASSWORD/_EMAIL` | Bootstrap admin account created on first start           |
-| `OACHKATZL_TOTP_ISSUER`                | Issuer name shown in 2FA authenticator apps              |
-| `OACHKATZL_REQUIRE_2FA`                | Enforce 2FA for all users (`true`/`false`)               |
+| Variable                                  | Description                                                                                           |
+|-------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| `OACHKATZL_MONGO_URI`                     | MongoDB connection string                                                                             |
+| `OACHKATZL_REDIS_URL`                     | Redis URL (broker, backplane, pub/sub)                                                                |
+| `OACHKATZL_JWT_SECRET`                    | Secret used to sign JWT tokens                                                                        |
+| `OACHKATZL_ENCRYPTION_KEY`                | Fernet key for encrypting secrets stored in the database                                              |
+| `OACHKATZL_ADMIN_USER/_PASSWORD/_EMAIL`   | Bootstrap admin account created on first start                                                        |
+| `OACHKATZL_TOTP_ISSUER`                   | Issuer name shown in 2FA authenticator apps                                                           |
+| `OACHKATZL_REQUIRE_2FA`                   | Enforce 2FA for all users (`true`/`false`)                                                            |
+| `OACHKATZL_BASE_URL`                      | External URL of the instance (used in artifact URL injection)                                         |
+| `OACHKATZL_INTERNAL_API_URL`              | Internal Docker URL of the API container (default: `http://api:5000`)                                 |
+| `OACHKATZL_PIP_INDEX_URL`                 | pip `--index-url` for Python tasks — point to devpi or any PEP 503 proxy; leave empty for direct PyPI |
 
 The full list of variables is in [`.env.example`](.env.example).
 For the Docker Hub option place the file as `.env` next to `docker-compose.yml`; for the build-from-source option use `backend/.env`.

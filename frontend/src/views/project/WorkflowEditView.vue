@@ -18,6 +18,8 @@ const name = ref('')
 const description = ref('')
 const allowParallel = ref(false)
 const suppressSuccessAlerts = ref(false)
+const artifactCacheId = ref('')
+const artifactCaches = ref<any[]>([])
 
 const nodes = ref<WNode[]>([])
 
@@ -70,6 +72,7 @@ async function loadWorkflow() {
     description.value = data.description ?? ''
     allowParallel.value = data.allow_parallel ?? false
     suppressSuccessAlerts.value = data.suppress_success_alerts ?? false
+    artifactCacheId.value = data.artifact_cache_id ?? ''
     nodes.value = (data.nodes ?? []).map((n: any) => ({
       node_id: n.node_id,
       label: n.label ?? '',
@@ -98,7 +101,12 @@ async function loadWorkflow() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadTemplates(), loadWorkflow()])
+  const [,, acRes] = await Promise.all([
+    loadTemplates(),
+    loadWorkflow(),
+    import('@/api/client').then(m => m.default.get(`/projects/${projectId.value}/artifact-caches`)),
+  ])
+  artifactCaches.value = acRes.data ?? []
 })
 
 async function save() {
@@ -113,6 +121,7 @@ async function save() {
     description: description.value.trim(),
     allow_parallel: allowParallel.value,
     suppress_success_alerts: suppressSuccessAlerts.value,
+    artifact_cache_id: artifactCacheId.value || null,
     nodes: nodes.value.map(n => ({
       node_id: n.node_id,
       label: n.label,
@@ -204,6 +213,22 @@ const SURVEY_TYPES = ['string', 'int', 'enum', 'secret', 'bool', 'separator']
             <input type="checkbox" v-model="suppressSuccessAlerts" class="rounded" />
             Suppress success alerts
           </label>
+        </div>
+      </div>
+
+      <!-- Artifact Cache -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Artifact Cache</h3>
+        <p class="text-xs text-gray-400">All nodes in this workflow share one artifact token. Downstream tasks can read artifacts uploaded by earlier nodes.</p>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Cache</label>
+          <select v-model="artifactCacheId"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+            <option value="">— none —</option>
+            <option v-for="ac in artifactCaches" :key="ac.id" :value="ac.id">
+              {{ ac.name }}{{ ac.retention_days ? ` (${ac.retention_days}d)` : ' (no expiry)' }}
+            </option>
+          </select>
         </div>
       </div>
 

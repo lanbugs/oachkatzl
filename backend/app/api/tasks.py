@@ -156,6 +156,32 @@ def stop_task(project_id, task_id):
     return {"message": "Stop signal sent"}, 200
 
 
+@bp.get("/<task_id>/artifacts")
+@require_project_role("owner", "manager", "task_runner", "guest")
+def get_task_artifacts(project_id, task_id):
+    from app.models.task import Task
+    from app.models.artifact import Artifact
+    try:
+        task = Task.objects.get(id=task_id, project=g.project)
+    except Task.DoesNotExist:
+        raise HTTPError(404, "Task not found")
+    if not task.artifact_run:
+        return [], 200
+    artifacts = Artifact.objects(run=task.artifact_run).order_by("-created_at")
+    return [
+        {
+            "id":            str(a.id),
+            "run_id":        str(a.run.id),
+            "name":          a.name,
+            "artifact_type": a.artifact_type,
+            "content_type":  a.content_type or "application/octet-stream",
+            "size_bytes":    a.size_bytes or 0,
+            "created_at":    a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in artifacts
+    ], 200
+
+
 @bp.get("/<task_id>/log")
 @require_project_role("owner", "manager", "task_runner", "guest")
 @bp.output(TaskLogOut)

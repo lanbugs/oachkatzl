@@ -54,6 +54,52 @@ def _flush_log(task, log_lines: list[str]) -> None:
         pass
 
 
+def _inject_artifact_token(task, env: dict, r) -> None:
+    """Inject artifact token and URL pairs into the task environment.
+
+    For workflow tasks the token is parked in Redis by start_workflow.
+    For standalone tasks we create the ArtifactRun here if the template has a cache.
+    """
+    try:
+        art_run = task.artifact_run
+        if art_run:
+            # Workflow path: raw token stored in Redis with TTL
+            raw = r.get(f"artifact_token:{art_run.id}")
+            if raw:
+                _set_artifact_env(env, raw.decode())
+            return
+
+        # Standalone task path: create ArtifactRun if template has cache
+        template = task.template
+        cache = None
+        try:
+            cache = template.artifact_cache
+        except Exception:
+            pass
+
+        if not cache:
+            return
+
+        from app.services.artifact_service import create_artifact_run
+        art_run, raw_token = create_artifact_run(cache=cache, task=task)
+        task.artifact_run = art_run
+        task.save()
+        _set_artifact_env(env, raw_token)
+    except Exception as exc:
+        log.warning("Artifact token injection failed: %s", exc)
+
+
+def _set_artifact_env(env: dict, token: str) -> None:
+    """Write all six artifact env vars into env."""
+    internal = settings.INTERNAL_API_URL.rstrip("/")
+    external = settings.BASE_URL.rstrip("/")
+    env["OACHKATZL_ARTIFACT_TOKEN"]        = token
+    env["OACHKATZL_ARTIFACT_URL"]          = internal + "/api/artifacts/upload"
+    env["OACHKATZL_ARTIFACT_LIST_URL"]     = internal + "/api/artifacts/list"
+    env["OACHKATZL_ARTIFACT_URL_EXT"]      = external + "/api/artifacts/upload"
+    env["OACHKATZL_ARTIFACT_LIST_URL_EXT"] = external + "/api/artifacts/list"
+
+
 def _ensure_mongo() -> None:
     """Connect to MongoDB if not already connected (safe in forked workers and tests)."""
     import mongoengine
@@ -122,6 +168,9 @@ def run_task(self, task_id: str) -> None:
 
         from app.tasks.executor import build_env
         env, _ = build_env(task, workdir)
+
+        # Inject artifact cache token when template or workflow has a cache configured
+        _inject_artifact_token(task, env, r)
 
         from app.tasks.apply_credentials import apply_credentials
         cred_env, cred_extra_vars, cred_cleanup = apply_credentials(task)

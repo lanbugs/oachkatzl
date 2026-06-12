@@ -42,6 +42,7 @@ class WorkflowRun(Document):
     node_runs = EmbeddedDocumentListField(WorkflowNodeRun)
     user = ReferenceField(User, null=True, reverse_delete_rule=NULLIFY)
     survey_answers = StringField(default="{}")   # JSON string
+    artifact_run = ReferenceField("app.models.artifact.ArtifactRun", null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)
     start = DateTimeField()
     end = DateTimeField()

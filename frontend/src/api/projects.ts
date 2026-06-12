@@ -35,6 +35,8 @@ export const projectsApi = {
     api.post(`/projects/${pid}/tasks/${taskId}/stop`),
   getTaskLog: (pid: string, taskId: string) =>
     api.get(`/projects/${pid}/tasks/${taskId}/log`),
+  getTaskArtifacts: (pid: string, taskId: string) =>
+    api.get(`/projects/${pid}/tasks/${taskId}/artifacts`),
 
   listKeys: (id: string) => api.get(`/projects/${id}/keys`),
   createKey: (id: string, data: object) => api.post(`/projects/${id}/keys`, data),

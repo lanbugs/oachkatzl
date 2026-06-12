@@ -24,6 +24,9 @@ class Settings:
         "OACHKATZL_CORS_ORIGINS", "http://localhost:5173"
     ).split(",")
     GIT_WORKDIR: str = os.getenv("OACHKATZL_GIT_WORKDIR", "/tmp/oachkatzl")
+    BASE_URL: str = os.getenv("OACHKATZL_BASE_URL", "http://localhost:8888")
+    INTERNAL_API_URL: str = os.getenv("OACHKATZL_INTERNAL_API_URL", "http://api:5000")
+    PIP_INDEX_URL: str = os.getenv("OACHKATZL_PIP_INDEX_URL", "")  # e.g. http://devpi:3141/root/pypi/+simple/
 
     # LDAP / Active Directory — optional bootstrap via env vars
     LDAP_SERVER_URL: str  = os.getenv("OACHKATZL_LDAP_URL", "")

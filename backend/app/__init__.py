@@ -80,12 +80,14 @@ def _register_blueprints(app: APIFlask) -> None:
     from app.api.credential_types import bp as cred_types_bp
     from app.api.credentials import bp as creds_bp
     from app.api.workflows import bp as workflows_bp
+    from app.api.artifact_caches import bp as artifact_caches_bp
+    from app.api.artifacts import bp as artifacts_bp
 
     for blueprint in (
         auth_bp, users_bp, projects_bp, keys_bp, repos_bp, inv_bp,
         env_bp, tmpl_bp, tasks_bp, sched_bp, integ_bp, views_bp,
         capps_bp, settings_bp, backup_bp, notif_bp, tokens_bp, ldap_bp,
-        cred_types_bp, creds_bp, workflows_bp,
+        cred_types_bp, creds_bp, workflows_bp, artifact_caches_bp, artifacts_bp,
     ):
         app.register_blueprint(blueprint)
 

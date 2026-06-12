@@ -16,6 +16,16 @@ from app.services.rbac import require_project_role
 
 log = logging.getLogger(__name__)
 
+
+def _resolve_artifact_cache(cache_id: str | None, project):
+    if not cache_id:
+        return None
+    from app.models.artifact import ArtifactCache
+    try:
+        return ArtifactCache.objects.get(id=cache_id, project=project)
+    except ArtifactCache.DoesNotExist:
+        return None
+
 bp = APIBlueprint("workflows", __name__)
 
 
@@ -66,6 +76,7 @@ def _wf_out(wf) -> dict:
         ],
         "allow_parallel": bool(wf.allow_parallel),
         "suppress_success_alerts": bool(wf.suppress_success_alerts),
+        "artifact_cache_id": str(wf.artifact_cache.id) if wf.artifact_cache else None,
         "created_at": wf.created_at.isoformat() if wf.created_at else None,
     }
 
@@ -181,6 +192,7 @@ def create_workflow(project_id, body):
         description=body.get("description", ""),
         allow_parallel=body.get("allow_parallel", False),
         suppress_success_alerts=body.get("suppress_success_alerts", False),
+        artifact_cache=_resolve_artifact_cache(body.get("artifact_cache_id"), g.project),
     )
 
     wf.nodes = _build_nodes(body.get("nodes", []))
@@ -215,6 +227,7 @@ def update_workflow(project_id, wid, body):
     wf.description = body.get("description", "")
     wf.allow_parallel = body.get("allow_parallel", False)
     wf.suppress_success_alerts = body.get("suppress_success_alerts", False)
+    wf.artifact_cache = _resolve_artifact_cache(body.get("artifact_cache_id"), g.project)
     wf.nodes = _build_nodes(body.get("nodes", []))
     wf.survey_vars = _build_survey_vars(body.get("survey_vars", []))
     wf.save()

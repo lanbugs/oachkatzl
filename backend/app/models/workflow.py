@@ -42,4 +42,5 @@ class WorkflowTemplate(Document):
     survey_vars = EmbeddedDocumentListField(SurveyVar)
     allow_parallel = BooleanField(default=False)
     suppress_success_alerts = BooleanField(default=False)
+    artifact_cache = ReferenceField("app.models.artifact.ArtifactCache", null=True)
     created_at = DateTimeField(default=datetime.datetime.utcnow)

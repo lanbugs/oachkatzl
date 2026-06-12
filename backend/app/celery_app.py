@@ -14,6 +14,7 @@ celery = Celery(
         "app.tasks.scheduler",
         "app.tasks.cleanup",
         "app.tasks.task_history_cleanup",
+        "app.tasks.cleanup_artifacts",
     ],
 )
 
@@ -41,6 +42,11 @@ celery.conf.update(
         "cleanup-task-history": {
             "task": "cleanup_task_history",
             "schedule": 60 * 60,
+        },
+        # Delete expired artifact runs once per day
+        "cleanup-artifacts": {
+            "task": "cleanup_artifacts",
+            "schedule": 24 * 60 * 60,
         },
     },
 )

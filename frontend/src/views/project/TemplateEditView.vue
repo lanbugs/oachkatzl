@@ -20,6 +20,7 @@ const keys = ref<any[]>([])
 const customApps = ref<any[]>([])
 const allCredentials = ref<any[]>([])
 const allCredentialTypes = ref<any[]>([])
+const artifactCaches = ref<any[]>([])
 
 // ── Form state ───────────────────────────────────────────────────────────
 const form = ref({
@@ -38,6 +39,7 @@ const form = ref({
   autorun: false,
   start_version: '',       // build type: e.g. "1.0.0"
   build_template_id: '',   // deploy type: linked build template
+  artifact_cache_id: '',   // optional: artifact cache for this template
 })
 
 interface SurveyVar {
@@ -75,7 +77,7 @@ const vaultKeysOptions = computed(() => keys.value.filter(k => k.type === 'vault
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 onMounted(async () => {
-  const [reposRes, invRes, envRes, keysRes, appsRes, tmplRes, credsRes, ctRes] = await Promise.all([
+  const [reposRes, invRes, envRes, keysRes, appsRes, tmplRes, credsRes, ctRes, acRes] = await Promise.all([
     projectsApi.listRepos(projectId.value),
     projectsApi.listInventories(projectId.value),
     projectsApi.listEnvironments(projectId.value),
@@ -84,6 +86,7 @@ onMounted(async () => {
     projectsApi.listTemplates(projectId.value),
     projectsApi.listCredentials(projectId.value),
     api.get('/credential-types'),
+    api.get(`/projects/${projectId.value}/artifact-caches`),
   ])
   repos.value = reposRes.data
   inventories.value = invRes.data
@@ -92,6 +95,7 @@ onMounted(async () => {
   customApps.value = appsRes.data
   allCredentials.value = credsRes.data
   allCredentialTypes.value = ctRes.data
+  artifactCaches.value = acRes.data ?? []
   // Only build-type templates can be referenced by deploy templates
   const tmplItems: any[] = tmplRes.data?.items ?? tmplRes.data ?? []
   buildTemplateList.value = tmplItems.filter((t: any) => t.type === 'build')
@@ -126,6 +130,7 @@ onMounted(async () => {
       key_id: v.key_id || '',
     }))
     selectedCredentialIds.value = data.credential_ids || []
+    form.value.artifact_cache_id = data.artifact_cache_id || ''
   } else {
     argumentsRaw.value = ''
   }
@@ -192,6 +197,7 @@ async function save() {
         values: sv.type === 'enum' ? sv.values.split('\n').map((v: string) => v.trim()).filter(Boolean) : [],
       })),
       credential_ids: selectedCredentialIds.value,
+      artifact_cache_id: form.value.artifact_cache_id || null,
       vaults: vaultKeys.value.filter(v => v.vault_id && v.key_id).map(v => ({
         vault_id: v.vault_id,
         name: v.name,
@@ -438,6 +444,26 @@ const playbookPlaceholder = computed(() => {
               <p class="text-xs text-gray-400">{{ cred.credential_type_name }}</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- Artifact Cache -->
+      <section class="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+        <h3 class="font-medium text-gray-900">Artifact Cache</h3>
+        <p class="text-xs text-gray-400">When a cache is selected, the task receives <code class="bg-gray-100 px-1 rounded">OACHKATZL_ARTIFACT_TOKEN</code> and <code class="bg-gray-100 px-1 rounded">OACHKATZL_ARTIFACT_URL</code> to upload files or JSON. In a workflow all nodes sharing the same cache token can read each other's artifacts.</p>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Cache</label>
+          <select v-model="form.artifact_cache_id"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+            <option value="">— none —</option>
+            <option v-for="ac in artifactCaches" :key="ac.id" :value="ac.id">
+              {{ ac.name }}{{ ac.retention_days ? ` (${ac.retention_days}d)` : ' (no expiry)' }}
+            </option>
+          </select>
+          <p v-if="artifactCaches.length === 0" class="text-xs text-gray-400 mt-1">
+            No artifact caches in this project.
+            <RouterLink :to="`/projects/${projectId}/artifact-caches`" class="text-brand-600 hover:underline ml-1">Create one →</RouterLink>
+          </p>
         </div>
       </section>
 
