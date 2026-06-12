@@ -52,7 +52,7 @@ export interface Task {
   build_task_id: string | null
   exit_code: number | null
   username: string | null
-  triggered_by: 'manual' | 'schedule' | 'token'
+  triggered_by: 'manual' | 'schedule' | 'token' | 'workflow'
   trigger_name: string
 }
 

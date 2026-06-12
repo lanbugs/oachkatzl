@@ -16,6 +16,8 @@ from app.models.option import Option
 from app.models.custom_app import CustomApp
 from app.models.credential_type import CredentialType
 from app.models.credential import Credential
+from app.models.workflow import WorkflowTemplate, WorkflowNode
+from app.models.workflow_run import WorkflowRun, WorkflowNodeRun
 
 __all__ = [
     "User", "ApiToken",
@@ -36,4 +38,6 @@ __all__ = [
     "CustomApp",
     "CredentialType",
     "Credential",
+    "WorkflowTemplate", "WorkflowNode",
+    "WorkflowRun", "WorkflowNodeRun",
 ]

@@ -204,11 +204,13 @@ def run_task(self, task_id: str) -> None:
         _flush_log(task, log_lines)   # final flush
         _emit("task_status", {"task_id": task_id, "status": task.status}, task_id)
 
-        # Send notifications (suppressed on success if template has suppress_success_alerts)
-        try:
-            template_suppress = task.template.suppress_success_alerts
-            if not (task.status == "success" and template_suppress):
-                from app.services.notify_service import notify_task_result
-                notify_task_result(task)
-        except Exception as exc:
-            log.error("Notification dispatch error: %s", exc)
+        # Workflow-triggered tasks skip per-task notifications; the workflow run
+        # fires its own notification when all nodes are done.
+        if task.triggered_by != "workflow":
+            try:
+                template_suppress = task.template.suppress_success_alerts
+                if not (task.status == "success" and template_suppress):
+                    from app.services.notify_service import notify_task_result
+                    notify_task_result(task)
+            except Exception as exc:
+                log.error("Notification dispatch error: %s", exc)

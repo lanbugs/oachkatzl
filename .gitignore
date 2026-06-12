@@ -224,3 +224,7 @@ CLAUDE.md
 
 # Pycharm
 .idea/
+
+# Node
+/frontend/node_modules/
+/frontend/dist/

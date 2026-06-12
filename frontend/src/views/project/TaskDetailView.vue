@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, nextTick, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi } from '@/api/projects'
 import { StopCircle, Loader2, RotateCcw } from 'lucide-vue-next'
 import { formatLogLine } from '@/composables/useAnsi'
@@ -188,6 +188,11 @@ const statusLabel: Record<string, string> = {
             class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-medium">
             🔑 Via token: <strong>{{ task.trigger_name || 'unknown' }}</strong>
           </span>
+          <RouterLink v-else-if="task.triggered_by === 'workflow' && task.trigger_name"
+            :to="`/projects/${projectId}/workflow-runs/${task.trigger_name}`"
+            class="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded font-medium hover:bg-teal-100">
+            ⬡ Workflow run {{ task.trigger_name.slice(-8) }} →
+          </RouterLink>
           <span v-if="task.debug" class="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">verbose</span>
           <span v-if="task.dry_run" class="text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded">--check</span>
           <span v-if="task.diff" class="text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 px-1.5 py-0.5 rounded">--diff</span>

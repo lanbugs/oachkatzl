@@ -25,11 +25,44 @@ Ansible playbooks, shell scripts, python and more ...
 - **Custom Credentials** — admin-defined credential types with a free-form input schema and injector rules; inject values as environment variables, Ansible extra vars, or temporary files. Multiple credentials can be attached to a single template.
 - **Survey variables** — interactive input prompts shown before a task runs, supporting `string`, `int`, `enum`, `secret`, `bool` and visual separator types.
 - **Task replay** — re-run any completed task with the exact same survey answers, environment settings and git revision (commit hash is pinned automatically). Sensitive field names are masked in the run-parameter display.
+- **Workflows** — chain templates into a directed graph with per-edge conditions (`on success`, `on failure`, `always`); AND-join semantics, interactive drag-and-drop canvas editor, live run view with per-node status, and a single summary notification per run.
 - **Schedules** — cron-based recurring runs powered by Celery Beat.
 - **Integrations & webhooks** — trigger templates via incoming webhooks authenticated with HMAC signatures or tokens, with flexible matchers and value extraction from the payload.
-- **Notifications** — send alerts to Email, Slack, Telegram, Teams, Rocket.Chat, DingTalk or Gotify.
+- **Notifications** — send alerts to Email, Slack, Telegram, Teams, Rocket.Chat, DingTalk or Gotify; workflow runs fire a single summary notification instead of one per task.
 - **Authentication** — local login, JWT access tokens, per-user API tokens, **2FA/TOTP** with recovery codes and LDAP.
 - **Dashboard, activity log, views, backup/restore** and auto-generated OpenAPI documentation out of the box.
+
+---
+
+## 🔀 Workflows
+
+Workflows let you chain multiple task templates into a **directed acyclic graph (DAG)** and run them as a single unit.
+
+### Building a workflow
+
+Open a project, go to **Workflows → New workflow**. The visual canvas starts with a **START** node. Hover any node to reveal the **+** button and connect a new step:
+
+| Condition | Meaning |
+|-----------|---------|
+| ✓ **On Success** | Next node runs when the predecessor exits with code 0. |
+| ✗ **On Failure** | Next node runs when the predecessor fails or is stopped. |
+| → **Always** | Next node always runs after the predecessor finishes. |
+
+- Drag nodes to rearrange; positions are persisted.
+- Click a node to edit its template, label, or delete it.
+- Click **Auto-layout** (top-right of canvas) to re-arrange by execution order.
+
+### Execution model
+
+- Root nodes (directly connected from START) are launched in parallel.
+- A node with **multiple predecessors** uses **AND-join** semantics — it waits for *all* predecessors to finish; if any predecessor's outcome does not match the connecting edge type, the node is **skipped**.
+- The workflow reaches `success` when every failure is absorbed by a downstream `on failure` or `always` handler; otherwise it reaches `error`.
+
+### Notifications
+
+Workflow runs fire a **single summary notification** on completion. Per-task notifications are suppressed for tasks running inside a workflow to avoid alert noise. The *Suppress success alerts* flag on the workflow controls whether `success` notifications are sent at all.
+
+---
 
 ## 🧱 Tech Stack
 

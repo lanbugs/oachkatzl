@@ -10,6 +10,7 @@ celery = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.tasks.run_task",
+        "app.tasks.run_workflow",
         "app.tasks.scheduler",
         "app.tasks.cleanup",
         "app.tasks.task_history_cleanup",

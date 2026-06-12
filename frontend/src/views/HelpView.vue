@@ -13,6 +13,7 @@ const sections = [
   { id: 'build-deploy',   label: 'Build & Deploy' },
   { id: 'survey',         label: 'Survey Variables' },
   { id: 'tasks',          label: 'Running Tasks' },
+  { id: 'workflows',      label: 'Workflows' },
   { id: 'scaling',        label: 'Scaling Workers' },
   { id: 'schedules',      label: 'Schedules' },
   { id: 'tokens',         label: 'Execute Tokens' },
@@ -526,6 +527,101 @@ kubectl rollout status deployment/myapp</pre>
         </div>
       </section>
 
+      <!-- ── Workflows ── -->
+      <section id="workflows">
+        <h2 class="help-h2">Workflows</h2>
+        <div class="prose-box">
+          <p>
+            A <strong>Workflow</strong> chains multiple task templates into a directed graph.
+            Each node runs one template; edges between nodes define when the next node starts
+            based on the outcome of its predecessor.
+          </p>
+
+          <h3>Creating a workflow</h3>
+          <p>
+            Open a project, navigate to <em>Workflows</em> and click <strong>New workflow</strong>.
+            The canvas opens with a <strong>START</strong> node. Hover over any node to reveal
+            the toolbar, then use one of the four buttons to build the graph.
+          </p>
+
+          <h3>Node toolbar buttons</h3>
+          <table class="help-table">
+            <thead><tr><th>Button</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="badge green">✓</span></td>
+                <td><strong>Add on success</strong> — creates a new node connected with an <em>On Success</em> edge.</td>
+              </tr>
+              <tr>
+                <td><span class="badge red">✗</span></td>
+                <td><strong>Add on failure</strong> — creates a new node connected with an <em>On Failure</em> edge.</td>
+              </tr>
+              <tr>
+                <td><span class="badge gray">→</span></td>
+                <td><strong>Add always</strong> — creates a new node connected with an <em>Always</em> edge.</td>
+              </tr>
+              <tr>
+                <td><span class="badge blue">🔗</span></td>
+                <td><strong>Link to existing node</strong> — draws an edge from this node to any node already on the canvas. A dialog lets you choose the target and the condition. Use this to create <em>AND-joins</em> (multiple predecessors for one node).</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Connection conditions</h3>
+          <table class="help-table">
+            <thead><tr><th>Condition</th><th>When the next node runs</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge green">✓ On Success</span></td><td>The predecessor task finished with exit code 0.</td></tr>
+              <tr><td><span class="badge red">✗ On Failure</span></td><td>The predecessor task finished with a non-zero exit code or was stopped.</td></tr>
+              <tr><td><span class="badge gray">→ Always</span></td><td>Regardless of the predecessor's outcome.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Canvas controls</h3>
+          <ul>
+            <li><strong>Drag</strong> nodes to reposition them — positions are saved with the workflow.</li>
+            <li><strong>Click</strong> a node to open the edit panel below the canvas (change label, template, or delete).</li>
+            <li>Hover an edge and click <strong>×</strong> to remove the connection.</li>
+            <li>The <strong>Auto-layout</strong> button (top-right of canvas) rearranges all nodes in columns by execution order and fits the viewport.</li>
+          </ul>
+
+          <h3>AND-join semantics</h3>
+          <p>
+            A node with <em>multiple predecessors</em> uses AND-join logic: it only starts once
+            <strong>all</strong> predecessors have finished and at least one of their edges fires.
+            If any predecessor votes "no" (its outcome does not match any outgoing edge type),
+            the node is <strong>skipped</strong>.
+          </p>
+          <p>
+            To create an AND-join, use the <strong>Link</strong> button (🔗) on each source node
+            and point it to the shared target node. For example, to run a cleanup task only when
+            both a "deploy" node and a "smoke-test" node have succeeded, link both to the cleanup
+            node with an <em>On Success</em> edge.
+          </p>
+
+          <h3>Running a workflow</h3>
+          <p>
+            Click <strong>Run</strong> on the workflows list. If the workflow has
+            <a @click.prevent="scrollTo('survey')" href="#" class="text-brand-600 hover:underline">survey variables</a>,
+            they are collected once before the first node starts and passed to every node.
+            The run view shows a live graph with per-node status badges and links to individual task logs.
+          </p>
+
+          <h3>Notifications</h3>
+          <p>
+            Individual task notifications are <strong>suppressed</strong> for tasks that run
+            inside a workflow. A single summary notification is sent when the workflow run
+            reaches a terminal state (<em>success</em> or <em>error</em>), respecting the
+            <em>Suppress success alerts</em> setting on the workflow.
+          </p>
+
+          <div class="callout info">
+            <strong>Tip:</strong> Use <em>On Failure</em> edges to build error-handling branches —
+            for example, a rollback playbook that only runs when the deploy node fails.
+          </div>
+        </div>
+      </section>
+
       <!-- ── Scaling Workers ── -->
       <section id="scaling">
         <h2 class="help-h2">Scaling Workers</h2>
@@ -717,7 +813,7 @@ curl -X POST "https://oachkatzl.example.com/api/execute/&lt;token&gt;" \
               <img src="@/assets/logo.svg" alt="Oachkatzl" class="w-10 h-10 rounded-xl" />
               <div>
                 <p class="font-semibold text-gray-900">Oachkatzl</p>
-                <p class="text-xs text-gray-400">Written by Maximilian Thoma &copy; 2026</p>
+                <p class="text-xs text-gray-400">by Maximilian Thoma 2026</p>
               </div>
             </div>
             <div class="border-t border-gray-100 pt-4 space-y-2">

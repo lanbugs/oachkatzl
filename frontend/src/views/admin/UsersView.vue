@@ -10,6 +10,8 @@ const saving = ref(false)
 
 const newForm = ref({ username: '', email: '', password: '', name: '', is_admin: false })
 const editForm = ref({ email: '', name: '', password: '', is_admin: false, active: true })
+const newError = ref('')
+const editError = ref('')
 
 onMounted(async () => {
   const { data } = await api.get('/users')
@@ -17,12 +19,17 @@ onMounted(async () => {
 })
 
 async function createUser() {
+  newError.value = ''
   saving.value = true
   try {
     const { data } = await api.post('/users', newForm.value)
     users.value.push(data)
     showNew.value = false
     newForm.value = { username: '', email: '', password: '', name: '', is_admin: false }
+  } catch (e: any) {
+    newError.value = e.response?.data?.detail?.[0]?.message
+      ?? e.response?.data?.message
+      ?? 'Failed to create user'
   } finally {
     saving.value = false
   }
@@ -34,6 +41,7 @@ function startEdit(u: any) {
 }
 
 async function saveEdit() {
+  editError.value = ''
   saving.value = true
   try {
     const payload: any = { email: editForm.value.email, name: editForm.value.name, is_admin: editForm.value.is_admin, active: editForm.value.active }
@@ -42,6 +50,10 @@ async function saveEdit() {
     const idx = users.value.findIndex(u => u.id === editTarget.value.id)
     if (idx !== -1) users.value[idx] = data
     editTarget.value = null
+  } catch (e: any) {
+    editError.value = e.response?.data?.detail?.[0]?.message
+      ?? e.response?.data?.message
+      ?? 'Failed to save changes'
   } finally {
     saving.value = false
   }
@@ -76,17 +88,20 @@ async function saveEdit() {
         </div>
         <div>
           <label class="block text-xs font-medium text-gray-600 mb-1">Password *</label>
-          <input v-model="newForm.password" type="password" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <input v-model="newForm.password" type="password" required minlength="8"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <p class="text-xs text-gray-400 mt-1">Minimum 8 characters.</p>
         </div>
         <div class="col-span-2 flex items-center gap-2">
           <input v-model="newForm.is_admin" type="checkbox" id="is_admin_new" class="rounded" />
           <label for="is_admin_new" class="text-sm text-gray-700">Global admin</label>
         </div>
-        <div class="col-span-2 flex gap-3">
+        <div class="col-span-2 flex items-center gap-3">
           <button type="submit" :disabled="saving" class="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-60">
             {{ saving ? 'Creating…' : 'Create user' }}
           </button>
-          <button type="button" @click="showNew = false" class="text-sm text-gray-500">Cancel</button>
+          <button type="button" @click="showNew = false; newError = ''" class="text-sm text-gray-500">Cancel</button>
+          <p v-if="newError" class="text-sm text-red-600">{{ newError }}</p>
         </div>
       </form>
     </div>
@@ -108,7 +123,9 @@ async function saveEdit() {
         </div>
         <div class="col-span-2">
           <label class="block text-xs font-medium text-gray-600 mb-1">New password <span class="text-gray-400">(leave blank to keep current)</span></label>
-          <input v-model="editForm.password" type="password" autocomplete="new-password" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <input v-model="editForm.password" type="password" autocomplete="new-password" minlength="8"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <p v-if="editForm.password" class="text-xs text-gray-400 mt-1">Minimum 8 characters.</p>
         </div>
         <div class="col-span-2 flex flex-wrap gap-4">
           <label class="flex items-center gap-2 text-sm">
@@ -120,11 +137,12 @@ async function saveEdit() {
             Active
           </label>
         </div>
-        <div class="col-span-2 flex gap-3">
+        <div class="col-span-2 flex items-center gap-3">
           <button type="submit" :disabled="saving" class="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-60">
             {{ saving ? 'Saving…' : 'Save changes' }}
           </button>
-          <button type="button" @click="editTarget = null" class="text-sm text-gray-500">Cancel</button>
+          <button type="button" @click="editTarget = null; editError = ''" class="text-sm text-gray-500">Cancel</button>
+          <p v-if="editError" class="text-sm text-red-600">{{ editError }}</p>
         </div>
       </form>
     </div>

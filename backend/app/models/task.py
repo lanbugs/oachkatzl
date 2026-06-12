@@ -48,8 +48,8 @@ class Task(Document):
     runner = ReferenceField(Runner, null=True, reverse_delete_rule=NULLIFY)
     exit_code = IntField()
     # How the task was triggered
-    triggered_by = StringField(choices=("manual", "schedule", "token"), default="manual")
-    trigger_name = StringField(default="")   # token name or empty
+    triggered_by = StringField(choices=("manual", "schedule", "token", "workflow"), default="manual")
+    trigger_name = StringField(default="")   # token name / workflow_run_id
     # If set, the worker checks out this specific commit instead of HEAD
     pin_commit = StringField(default="")
 

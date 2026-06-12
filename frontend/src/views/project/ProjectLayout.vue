@@ -3,7 +3,7 @@ import { onMounted, computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
 import { useAuthStore } from '@/stores/auth'
-import { LayoutTemplate, ListChecks, Key, GitBranch, Users, Server, Variable, Clock, Bell } from 'lucide-vue-next'
+import { LayoutTemplate, ListChecks, Key, GitBranch, Users, Server, Variable, Clock, Bell, GitMerge } from 'lucide-vue-next'
 
 const route = useRoute()
 const store = useProjectsStore()
@@ -21,6 +21,7 @@ const allTabs = computed(() => [
   // visible to everyone (guest+)
   { name: 'Templates',     to: `/projects/${projectId.value}`,               icon: LayoutTemplate, exact: true,  minRole: 'guest'       as Role },
   { name: 'Tasks',         to: `/projects/${projectId.value}/tasks`,          icon: ListChecks,                   minRole: 'guest'       as Role },
+  { name: 'Workflows',     to: `/projects/${projectId.value}/workflows`,      icon: GitMerge,                     minRole: 'task_runner' as Role },
   // resource tabs — manager+ only
   { name: 'Keys & Credentials', to: `/projects/${projectId.value}/keys`,     icon: Key,                          minRole: 'manager'     as Role },
   { name: 'Repositories',  to: `/projects/${projectId.value}/repositories`,   icon: GitBranch,                    minRole: 'manager'     as Role },

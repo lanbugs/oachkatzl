@@ -168,6 +168,11 @@ function duration(task: any): string {
                 class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-medium"
                 :title="`Token: ${t.trigger_name}`"
               >🔑 {{ t.trigger_name || 'Token' }}</span>
+              <RouterLink v-else-if="t.triggered_by === 'workflow' && t.trigger_name"
+                :to="`/projects/${projectId}/workflow-runs/${t.trigger_name}`"
+                class="text-xs bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.5 rounded font-medium hover:bg-teal-100"
+                :title="`Part of workflow run ${t.trigger_name.slice(-8)}`"
+              >⬡ Workflow</RouterLink>
             </div>
             <p class="text-xs text-gray-400 mt-0.5">
               {{ new Date(t.created_at).toLocaleString() }}

@@ -66,4 +66,19 @@ export const projectsApi = {
   createSchedule: (id: string, data: object) => api.post(`/projects/${id}/schedules`, data),
   updateSchedule: (pid: string, sid: string, data: object) => api.put(`/projects/${pid}/schedules/${sid}`, data),
   deleteSchedule: (pid: string, sid: string) => api.delete(`/projects/${pid}/schedules/${sid}`),
+
+  // Workflow Templates
+  listWorkflows: (pid: string) => api.get(`/projects/${pid}/workflows/`),
+  createWorkflow: (pid: string, data: object) => api.post(`/projects/${pid}/workflows/`, data),
+  getWorkflow: (pid: string, wid: string) => api.get(`/projects/${pid}/workflows/${wid}`),
+  updateWorkflow: (pid: string, wid: string, data: object) => api.put(`/projects/${pid}/workflows/${wid}`, data),
+  deleteWorkflow: (pid: string, wid: string) => api.delete(`/projects/${pid}/workflows/${wid}`),
+  startWorkflow: (pid: string, wid: string, data?: object) =>
+    api.post(`/projects/${pid}/workflows/${wid}/start`, data ?? {}),
+
+  // Workflow Runs
+  listWorkflowRuns: (pid: string, page = 1, perPage = 20) =>
+    api.get(`/projects/${pid}/workflow-runs/`, { params: { page, per_page: perPage } }),
+  getWorkflowRun: (pid: string, runId: string) => api.get(`/projects/${pid}/workflow-runs/${runId}`),
+  stopWorkflowRun: (pid: string, runId: string) => api.post(`/projects/${pid}/workflow-runs/${runId}/stop`),
 }
