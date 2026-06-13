@@ -10,6 +10,37 @@ from app.celery_app import celery
 log = logging.getLogger(__name__)
 
 
+def _resolve_survey_answers_from_vars(schedule, survey_vars) -> tuple[dict, list[str]]:
+    """Resolve survey answers for any resource that has survey_vars."""
+    stored: dict = {}
+    try:
+        stored = json.loads(schedule.survey_answers or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    answers: dict = {}
+    missing: list[str] = []
+
+    for sv in survey_vars:
+        if sv.name in stored and stored[sv.name] not in ("", None):
+            val = stored[sv.name]
+        elif sv.default:
+            val = sv.default
+        else:
+            if sv.required:
+                missing.append(sv.name)
+            continue
+
+        if sv.type == "int":
+            try:
+                val = int(val)
+            except (ValueError, TypeError):
+                pass
+        answers[sv.name] = val
+
+    return answers, missing
+
+
 def _resolve_survey_answers(schedule, template) -> tuple[dict, list[str]]:
     """Merge schedule-stored survey answers with template defaults.
 
@@ -70,31 +101,62 @@ def check_schedules() -> None:
             if not (now - datetime.timedelta(seconds=30) <= next_run <= now + datetime.timedelta(seconds=30)):
                 continue
 
-            template = schedule.template
-
-            # Resolve survey answers (schedule values take priority over defaults)
-            survey_answers, missing = _resolve_survey_answers(schedule, template)
-            if missing:
-                log.error(
-                    "Schedule %s skipped: template '%s' has required survey vars "
-                    "with no default: %s. Set defaults on the template to allow "
-                    "scheduled execution.",
-                    schedule.id,
-                    template.name,
-                    ", ".join(missing),
+            if schedule.workflow:
+                # ── Workflow schedule ─────────────────────────────────
+                workflow = schedule.workflow
+                survey_answers, missing = _resolve_survey_answers_from_vars(
+                    schedule, workflow.survey_vars
                 )
-                continue
+                if missing:
+                    log.error(
+                        "Schedule %s skipped: workflow '%s' has required survey vars "
+                        "with no default: %s.",
+                        schedule.id, workflow.name, ", ".join(missing),
+                    )
+                    continue
 
-            task = create_task(
-                template=template,
-                user=None,
-                survey_answers=survey_answers if survey_answers else None,
-                triggered_by="schedule",
-                trigger_name=schedule.cron_format,
-            )
-            enqueue_task(task)
-            log.info("Schedule %s → task %s queued for template '%s'",
-                     schedule.id, task.id, template.name)
+                from app.models.workflow_run import WorkflowRun
+                from app.tasks.run_workflow import start_workflow as start_wf_task
+
+                run = WorkflowRun(
+                    project=schedule.project,
+                    workflow=workflow,
+                    status="waiting",
+                    user=None,
+                    survey_answers=json.dumps(survey_answers),
+                ).save()
+                start_wf_task.delay(str(run.id))
+                log.info(
+                    "Schedule %s → workflow run %s queued for '%s'",
+                    schedule.id, run.id, workflow.name,
+                )
+
+            elif schedule.template:
+                # ── Template schedule ─────────────────────────────────
+                template = schedule.template
+                survey_answers, missing = _resolve_survey_answers(schedule, template)
+                if missing:
+                    log.error(
+                        "Schedule %s skipped: template '%s' has required survey vars "
+                        "with no default: %s. Set defaults on the template to allow "
+                        "scheduled execution.",
+                        schedule.id, template.name, ", ".join(missing),
+                    )
+                    continue
+
+                task = create_task(
+                    template=template,
+                    user=None,
+                    survey_answers=survey_answers if survey_answers else None,
+                    triggered_by="schedule",
+                    trigger_name=schedule.cron_format,
+                )
+                enqueue_task(task)
+                log.info("Schedule %s → task %s queued for template '%s'",
+                         schedule.id, task.id, template.name)
+
+            else:
+                log.warning("Schedule %s has neither template nor workflow, skipping", schedule.id)
 
         except Exception as exc:
             log.error("Schedule %s error: %s", schedule.id, exc)

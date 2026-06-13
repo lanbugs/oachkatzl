@@ -5,11 +5,11 @@ from app.models.repository import Repository
 from app.models.inventory import Inventory
 from app.models.environment import Environment
 from app.models.view import View
-# artifact + worker_pool must be imported before Template/CustomApp which reference them via string
+# Import order matters: documents must be registered before any model that
+# references them via a string in ReferenceField.
 from app.models.artifact import ArtifactCache, ArtifactRun, Artifact
 from app.models.worker_pool import WorkerPool
 from app.models.template import Template, SurveyVar
-from app.models.schedule import Schedule
 from app.models.task import Task, TaskLog
 from app.models.integration import Integration
 from app.models.runner import Runner
@@ -21,6 +21,8 @@ from app.models.credential_type import CredentialType
 from app.models.credential import Credential
 from app.models.workflow import WorkflowTemplate, WorkflowNode
 from app.models.workflow_run import WorkflowRun, WorkflowNodeRun
+# Schedule references both Template and WorkflowTemplate — must come last
+from app.models.schedule import Schedule
 
 __all__ = [
     "User", "ApiToken",

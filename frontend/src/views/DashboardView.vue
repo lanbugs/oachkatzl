@@ -1,23 +1,59 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useProjectsStore } from '@/stores/projects'
 import { RouterLink } from 'vue-router'
-import { FolderKanban } from 'lucide-vue-next'
+import { FolderKanban, Server, Cpu, Activity } from 'lucide-vue-next'
 import api from '@/api/client'
 
 const auth = useAuthStore()
 const projects = useProjectsStore()
 
+// ── Task stats ────────────────────────────────────────────────────────────
 interface DayStats { date: string; success: number; error: number }
 const stats = ref<DayStats[]>([])
+
+// ── Worker status ─────────────────────────────────────────────────────────
+interface PoolStatus {
+  queue: string
+  name: string
+  workers_total: number
+  capacity: number
+  workers_busy: number
+  tasks_active: number
+}
+const workerPools = ref<PoolStatus[]>([])
+const workerLoading = ref(true)
+let workerTimer: ReturnType<typeof setInterval> | null = null
+
+async function fetchWorkerStatus() {
+  try {
+    const { data } = await api.get('/dashboard/worker-status')
+    workerPools.value = data.pools
+  } catch {
+    // keep previous data on transient error
+  } finally {
+    workerLoading.value = false
+  }
+}
+
+const totalWorkers  = computed(() => workerPools.value.reduce((s, p) => s + p.workers_total, 0))
+const totalCapacity = computed(() => workerPools.value.reduce((s, p) => s + p.capacity,      0))
+const totalActive   = computed(() => workerPools.value.reduce((s, p) => s + p.tasks_active,  0))
+const totalBusy     = computed(() => workerPools.value.reduce((s, p) => s + p.workers_busy,  0))
 
 onMounted(async () => {
   if (!auth.user) await auth.fetchMe()
   await Promise.all([
     projects.fetchProjects(),
     api.get('/dashboard/task-stats').then(r => { stats.value = r.data }),
+    fetchWorkerStatus(),
   ])
+  workerTimer = setInterval(fetchWorkerStatus, 15_000)
+})
+
+onUnmounted(() => {
+  if (workerTimer) clearInterval(workerTimer)
 })
 
 // ── Chart layout constants (viewBox units) ────────────────────────────────
@@ -232,6 +268,96 @@ const totalError   = computed(() => stats.value.reduce((s, d) => s + d.error,   
       <div v-else class="h-24 flex items-center justify-center text-sm text-gray-400">
         Loading…
       </div>
+    </div>
+
+    <!-- ── Worker status ── -->
+    <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-gray-700">Worker Status</h2>
+        <div class="flex items-center gap-4 text-xs text-gray-500">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+            {{ totalWorkers }} online
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>
+            {{ totalActive }}&thinsp;/&thinsp;{{ totalCapacity }} slots
+          </span>
+        </div>
+      </div>
+
+      <!-- Loading skeleton -->
+      <div v-if="workerLoading" class="flex gap-3">
+        <div v-for="n in 2" :key="n"
+          class="flex-1 h-20 rounded-lg bg-gray-100 animate-pulse" />
+      </div>
+
+      <!-- Pool cards -->
+      <div v-else-if="workerPools.length" class="flex flex-wrap gap-3">
+        <div
+          v-for="pool in workerPools"
+          :key="pool.queue"
+          class="flex-1 min-w-44 rounded-lg border px-4 py-3 space-y-2"
+          :class="pool.workers_total === 0
+            ? 'border-gray-200 bg-gray-50'
+            : pool.workers_busy > 0
+              ? 'border-amber-200 bg-amber-50'
+              : 'border-emerald-200 bg-emerald-50'"
+        >
+          <!-- Pool name + queue badge -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <Server class="w-3.5 h-3.5 shrink-0"
+                :class="pool.workers_total === 0 ? 'text-gray-400' : 'text-gray-600'" />
+              <span class="text-sm font-medium text-gray-800 truncate">{{ pool.name }}</span>
+            </div>
+            <code class="text-[10px] bg-white border border-gray-200 px-1.5 py-0.5 rounded text-gray-500 shrink-0">
+              {{ pool.queue }}
+            </code>
+          </div>
+
+          <!-- Metrics row -->
+          <div class="flex items-center gap-3 text-xs flex-wrap">
+            <!-- Online indicator -->
+            <span class="flex items-center gap-1"
+              :class="pool.workers_total === 0 ? 'text-gray-400' : 'text-emerald-700'">
+              <span class="w-1.5 h-1.5 rounded-full inline-block"
+                :class="pool.workers_total === 0 ? 'bg-gray-300' : 'bg-emerald-500'" />
+              {{ pool.workers_total }}
+              {{ pool.workers_total === 1 ? 'worker' : 'workers' }}
+            </span>
+
+            <!-- Slot usage: active / capacity -->
+            <span class="flex items-center gap-1"
+              :class="pool.tasks_active > 0 ? 'text-blue-700' : 'text-gray-400'">
+              <Activity class="w-3 h-3" />
+              {{ pool.tasks_active }}&thinsp;/&thinsp;{{ pool.capacity }} slots
+            </span>
+          </div>
+
+          <!-- Capacity bar -->
+          <div v-if="pool.capacity > 0" class="mt-2">
+            <div class="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+              <div
+                class="h-full rounded-full transition-all duration-500"
+                :class="pool.tasks_active === 0
+                  ? 'bg-gray-300'
+                  : pool.tasks_active >= pool.capacity
+                    ? 'bg-red-500'
+                    : pool.tasks_active / pool.capacity > 0.7
+                      ? 'bg-amber-400'
+                      : 'bg-emerald-500'"
+                :style="{ width: `${Math.min((pool.tasks_active / pool.capacity) * 100, 100)}%` }"
+              />
+            </div>
+            <p class="text-[10px] text-gray-400 mt-0.5 text-right">
+              {{ pool.capacity - pool.tasks_active }} free
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p v-else class="text-sm text-gray-400 text-center py-4">No worker pools configured.</p>
     </div>
 
     <!-- ── Projects grid ── -->

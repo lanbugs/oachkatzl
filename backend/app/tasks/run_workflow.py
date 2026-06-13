@@ -322,51 +322,67 @@ def advance_workflow(self, workflow_run_id: str) -> None:
                 except Exception as exc:
                     log.warning("Could not load task %s: %s", nr.task_id, exc)
 
-        # ── Step 2a: Mark all newly-completed nodes as edges-fired ────────
-        # Do this BEFORE Step 2b so _target_decision sees the fully-updated
-        # edges_fired state and does not incorrectly return "wait".
-        for nr in nr_map.values():
-            if nr.status in ("success", "error", "stopped") and not nr.edges_fired:
-                nr.edges_fired = True
+        # ── Steps 2a+2b: propagate skip/start decisions until stable ─────
+        #
+        # Root cause of the "pending forever" bug: Step 2a was marking only
+        # ("success","error","stopped") as edges_fired, leaving "skipped" out.
+        # Downstream nodes then saw edges_fired=False on a skipped predecessor
+        # and returned "wait" indefinitely.
+        #
+        # Fix: use TERMINAL (which already includes "skipped") in Step 2a and
+        # set edges_fired=True immediately when skipping a node in Step 2b.
+        # The while-loop propagates full skip chains in a single advance call
+        # instead of requiring one call per depth level.
+        changed = True
+        while changed:
+            changed = False
 
-        # ── Step 2b: Start / wait / skip every pending node ───────────────
-        # AND-join semantics: a node starts only when ALL predecessors have
-        # fired and every predecessor that has an applicable edge voted 'yes'.
-        for nr in list(nr_map.values()):
-            if nr.status != "pending":
-                continue
+            # 2a — mark every terminal node (incl. "skipped") as fired
+            for nr in nr_map.values():
+                if nr.status in TERMINAL and not nr.edges_fired:
+                    nr.edges_fired = True
+                    changed = True
 
-            node = node_map.get(nr.node_id)
-            decision = _target_decision(nr.node_id, incoming, nr_map)
+            # 2b — resolve every pending node
+            for nr in list(nr_map.values()):
+                if nr.status != "pending":
+                    continue
 
-            if decision == "start":
-                log.debug("Workflow %s: starting node %s", workflow_run_id, nr.node_id)
-                if node:
-                    # Pass the workflow-level artifact_run so all nodes share the same token
-                    wf_artifact_run = run.artifact_run if run.artifact_run else None
-                    task = _start_node_task(node, run, survey_dict, artifact_run=wf_artifact_run)
-                    if task is not None:
-                        nr.status = "running"
-                        nr.task_id = str(task.id)
+                node = node_map.get(nr.node_id)
+                decision = _target_decision(nr.node_id, incoming, nr_map)
+
+                if decision == "start":
+                    log.debug("Workflow %s: starting node %s", workflow_run_id, nr.node_id)
+                    if node:
+                        wf_artifact_run = run.artifact_run if run.artifact_run else None
+                        task = _start_node_task(node, run, survey_dict, artifact_run=wf_artifact_run)
+                        if task is not None:
+                            nr.status = "running"
+                            nr.task_id = str(task.id)
+                        else:
+                            nr.status = "skipped"
+                            nr.edges_fired = True
                     else:
+                        log.warning("Node %s missing from workflow — skipping", nr.node_id)
                         nr.status = "skipped"
-                else:
-                    log.warning("Node %s missing from workflow — skipping", nr.node_id)
+                        nr.edges_fired = True
+                    changed = True
+
+                elif decision == "skip":
+                    preds = incoming.get(nr.node_id, {})
+                    reasons = [
+                        f"{pid[:8]} status={nr_map[pid].status} edges={etypes}"
+                        for pid, etypes in preds.items()
+                        if pid in nr_map
+                    ]
+                    log.warning(
+                        "Workflow %s: skipping node %s — predecessor votes: %s",
+                        workflow_run_id, nr.node_id, "; ".join(reasons) or "none",
+                    )
                     nr.status = "skipped"
-            elif decision == "skip":
-                # Log which predecessor caused the skip so it's diagnosable
-                preds = incoming.get(nr.node_id, {})
-                reasons = []
-                for pid, etypes in preds.items():
-                    pnr = nr_map.get(pid)
-                    if pnr:
-                        reasons.append(f"{pid[:8]} status={pnr.status} edges_fired={pnr.edges_fired} edge_types={etypes}")
-                log.warning(
-                    "Workflow %s: skipping node %s — predecessor votes: %s",
-                    workflow_run_id, nr.node_id, "; ".join(reasons) or "none",
-                )
-                nr.status = "skipped"
-            # decision == "wait": keep pending
+                    nr.edges_fired = True   # fire immediately so successors can evaluate
+                    changed = True
+                # decision == "wait": nothing to do this iteration
 
         # ── Step 3: Finalize or reschedule ───────────────────────────────
         running_or_pending = [nr for nr in nr_map.values() if nr.status not in TERMINAL]
