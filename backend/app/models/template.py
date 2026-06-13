@@ -71,4 +71,5 @@ class Template(Document):
     autorun = BooleanField(default=False)
     credentials = ListField(ReferenceField(Credential, reverse_delete_rule=PULL))
     artifact_cache = ReferenceField("app.models.artifact.ArtifactCache", null=True)
+    worker_pool = ReferenceField("app.models.worker_pool.WorkerPool", null=True, reverse_delete_rule=NULLIFY)
     created_at = DateTimeField(default=datetime.datetime.utcnow)

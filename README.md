@@ -27,6 +27,7 @@ Ansible playbooks, shell scripts, python and more ...
 - **Task replay** — re-run any completed task with the exact same survey answers, environment settings and git revision (commit hash is pinned automatically). Sensitive field names are masked in the run-parameter display.
 - **Workflows** — chain templates into a directed graph with per-edge conditions (`on success`, `on failure`, `always`); AND-join semantics, interactive drag-and-drop canvas editor, live run view with per-node status, and a single summary notification per run.
 - **Artifact Cache** — tasks upload files and JSON to a project-scoped cache via a token-authenticated REST API (`OACHKATZL_ARTIFACT_TOKEN` / `OACHKATZL_ARTIFACT_URL` injected automatically). Workflow nodes share one token so downstream tasks can consume upstream artifacts. Browse, download and CSV-export directly from the UI. Configurable data retention.
+- **Custom Worker Pools** — route specific templates or custom app types to dedicated worker images. Define named pools in Admin → Worker Pools; each pool corresponds to a Celery queue. A worker container joins a pool by setting `OACHKATZL_WORKER_QUEUES=<slug>`. Pool resolution follows a priority chain: template pool → custom app default pool → built-in `celery` queue.
 - **pip package proxy** — optional [devpi](https://devpi.net/) caching proxy included in the Docker Compose stack. Set `OACHKATZL_PIP_INDEX_URL` on any worker and packages are fetched from PyPI once, then served locally. Remote workers in distributed setups point to the same proxy over the network; if the proxy is unavailable the worker falls back to PyPI automatically.
 - **Schedules** — cron-based recurring runs powered by Celery Beat.
 - **Integrations & webhooks** — trigger templates via incoming webhooks authenticated with HMAC signatures or tokens, with flexible matchers and value extraction from the payload.
@@ -140,6 +141,7 @@ docker compose logs api | grep "Admin password"
 | `OACHKATZL_BASE_URL`                      | External URL of the instance (used in artifact URL injection)                                         |
 | `OACHKATZL_INTERNAL_API_URL`              | Internal Docker URL of the API container (default: `http://api:5000`)                                 |
 | `OACHKATZL_PIP_INDEX_URL`                 | pip `--index-url` for Python tasks — point to devpi or any PEP 503 proxy; leave empty for direct PyPI |
+| `OACHKATZL_WORKER_QUEUES`                 | Celery queue(s) a worker container consumes. Default: `celery`. Set to a Worker Pool slug (e.g. `gpu`) to create a dedicated worker for that pool. Comma-separate multiple queues. |
 
 The full list of variables is in [`.env.example`](.env.example).
 For the Docker Hub option place the file as `.env` next to `docker-compose.yml`; for the build-from-source option use `backend/.env`.
@@ -174,6 +176,55 @@ npm run dev        # Vite dev server
 npm run build      # production build
 npm run lint
 ```
+
+## 🖥️ Custom Worker Pools
+
+By default every task runs on the built-in `celery` queue. **Worker Pools** let you route specific templates or app types to dedicated worker containers — useful when some tasks need GPU drivers, extra binaries (Terraform, kubectl …), isolated network access, or a different Python environment.
+
+### How it works
+
+```
+Template A  ──→  pool "gpu"        ──→  worker-gpu container
+Template B  ──→  pool "terraform"  ──→  worker-terraform container
+Template C  ──→  (default)         ──→  standard worker container
+```
+
+### Quick setup
+
+1. **Define a pool** — open **Settings → Worker Pools** in the sidebar and click *New pool*. Set a slug (e.g. `gpu`).
+2. **Build a custom worker image** — use the official worker image as a base and add your tools:
+   ```dockerfile
+   FROM lanbugsde/oachkatzl-worker:latest
+   RUN apt-get update && apt-get install -y terraform && rm -rf /var/lib/apt/lists/*
+   ```
+3. **Add a worker service** in `docker-compose.yml`:
+   ```yaml
+   worker-terraform:
+     image: my-terraform-worker:latest
+     command: >-
+       sh -c "celery -A worker.celery worker -l info -c 2 -Q $$OACHKATZL_WORKER_QUEUES"
+     env_file: .env
+     environment:
+       OACHKATZL_WORKER_QUEUES: "terraform"
+     depends_on:
+       mongo: { condition: service_healthy }
+       redis: { condition: service_healthy }
+     volumes:
+       - /tmp/oachkatzl:/tmp/oachkatzl
+   ```
+4. **Assign the pool** on a template (dropdown in the template editor) or as the default on a Custom App (Settings → Custom Apps).
+
+### Pool resolution order
+
+| Priority | Source | Wins when |
+|----------|--------|-----------|
+| 1 (highest) | Template's worker pool field | Pool is set directly on the template |
+| 2 | Custom App's default pool | Template uses a custom app type that has a pool |
+| 3 (default) | Built-in `celery` queue | No pool set anywhere |
+
+> **Note:** if a pool has no running worker, tasks remain in `waiting` status indefinitely. Always ensure at least one worker container is started for every active pool.
+
+---
 
 ## 📦 Project Structure
 

@@ -18,6 +18,7 @@ class CustomAppIn(Schema):
     default_args = String(load_default="[]")
     args_template = String(load_default="{file} {arguments}")
     active = Boolean(load_default=True)
+    worker_pool_id = String(load_default=None)
 
 
 class CustomAppOut(Schema):
@@ -29,6 +30,8 @@ class CustomAppOut(Schema):
     default_args = String()
     args_template = String()
     active = Boolean()
+    worker_pool_id = String()
+    worker_pool_name = String()
 
 
 def _out(ca) -> dict:
@@ -41,6 +44,8 @@ def _out(ca) -> dict:
         "default_args": ca.default_args,
         "args_template": ca.args_template,
         "active": ca.active,
+        "worker_pool_id":   str(ca.worker_pool.id) if ca.worker_pool else None,
+        "worker_pool_name": ca.worker_pool.name if ca.worker_pool else None,
     }
 
 
@@ -50,6 +55,16 @@ def _out(ca) -> dict:
 def list_custom_apps():
     from app.models.custom_app import CustomApp
     return [_out(ca) for ca in CustomApp.objects(active=True)]
+
+
+def _resolve_worker_pool(pool_id: str | None):
+    if not pool_id:
+        return None
+    from app.models.worker_pool import WorkerPool
+    try:
+        return WorkerPool.objects.get(id=pool_id)
+    except WorkerPool.DoesNotExist:
+        return None
 
 
 @bp.post("/")
@@ -62,7 +77,8 @@ def create_custom_app(body):
         raise HTTPError(400, f"'{body['slug']}' is a reserved built-in app type")
     if CustomApp.objects(slug=body["slug"]).first():
         raise HTTPError(409, "Slug already exists")
-    ca = CustomApp(**body).save()
+    pool_id = body.pop("worker_pool_id", None)
+    ca = CustomApp(**body, worker_pool=_resolve_worker_pool(pool_id)).save()
     return _out(ca)
 
 
@@ -87,8 +103,10 @@ def update_custom_app(app_id, body):
         ca = CustomApp.objects.get(id=app_id)
     except CustomApp.DoesNotExist:
         raise HTTPError(404, "Custom app not found")
+    pool_id = body.pop("worker_pool_id", None)
     for k, v in body.items():
         setattr(ca, k, v)
+    ca.worker_pool = _resolve_worker_pool(pool_id)
     ca.save()
     return _out(ca)
 

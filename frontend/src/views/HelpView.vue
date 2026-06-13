@@ -17,6 +17,7 @@ const sections = [
   { id: 'artifacts',      label: 'Artifact Cache' },
   { id: 'pip-proxy',      label: 'pip Package Proxy' },
   { id: 'scaling',        label: 'Scaling Workers' },
+  { id: 'custom-workers', label: 'Custom Workers' },
   { id: 'schedules',      label: 'Schedules' },
   { id: 'tokens',         label: 'Execute Tokens' },
   { id: 'notifications',  label: 'Notifications' },
@@ -137,7 +138,7 @@ function scrollTo(id: string) {
           </div>
 
           <h3>Step 1 — Define a Credential Type (Admin)</h3>
-          <p>Open <strong>Credential Types</strong> in the left sidebar (visible to admins only) and click <em>New type</em>. Each type has two JSON fields:</p>
+          <p>Open <strong>Settings → Credential Types</strong> in the sidebar (visible to admins only) and click <em>New type</em>. Each type has two JSON fields:</p>
 
           <h3>Inputs schema</h3>
           <p>A JSON array describing the input fields users must fill in when creating a Credential of this type.</p>
@@ -1004,6 +1005,150 @@ docker compose exec worker celery -A app.celery_app inspect active
         </div>
       </section>
 
+      <!-- ── Custom Workers ── -->
+      <section id="custom-workers">
+        <h2 class="help-h2">Custom Workers</h2>
+        <div class="prose-box">
+          <p>
+            A <strong>Worker Pool</strong> is a named Celery queue that a dedicated worker container listens to.
+            Custom worker images — with additional binaries, GPU drivers, specific Python packages, or restricted network access —
+            register themselves by setting a single environment variable. Templates and Custom Apps can then target that pool,
+            so only the matching worker executes those tasks.
+          </p>
+
+          <div class="callout info">
+            The default worker listens to the built-in <code>celery</code> queue.
+            All templates that have no pool assigned continue to run there as before.
+            Custom pools are completely opt-in and additive.
+          </div>
+
+          <h3>Step 1 — Define a Worker Pool (Admin)</h3>
+          <p>
+            Go to <strong>Settings → Worker Pools</strong> in the sidebar and click <em>New pool</em>.
+            The <strong>slug</strong> is the Celery queue name — it must match exactly what the worker container advertises.
+          </p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>slug</code></td><td>Celery queue name. Lowercase letters, digits, <code>-</code> and <code>_</code>. Immutable after creation. Example: <code>gpu</code>, <code>ansible-extended</code>.</td></tr>
+              <tr><td><code>name</code></td><td>Human-readable display name shown in dropdowns.</td></tr>
+              <tr><td><code>description</code></td><td>Optional — what this pool is for, what tools it provides.</td></tr>
+              <tr><td><code>active</code></td><td>Inactive pools are hidden from dropdowns but existing assignments are preserved.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Step 2 — Start a worker that consumes the pool</h3>
+          <p>
+            Tell the worker which queue to consume via the <code>OACHKATZL_WORKER_QUEUES</code> environment variable.
+            The variable is passed directly to Celery's <code>-Q</code> flag.
+          </p>
+
+          <pre v-pre class="code-block"># docker-compose.yml — add a second worker service
+worker-gpu:
+  image: my-gpu-worker:latest      # custom image with CUDA, tensorflow, etc.
+  command: >-
+    sh -c "celery -A worker.celery worker -l info -c 2 -Q $$OACHKATZL_WORKER_QUEUES"
+  env_file: .env
+  environment:
+    OACHKATZL_WORKER_QUEUES: "gpu"
+    OACHKATZL_PIP_INDEX_URL: "http://devpi:3141/root/pypi/+simple/"
+  depends_on:
+    mongo: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  volumes:
+    - /tmp/oachkatzl:/tmp/oachkatzl</pre>
+
+          <p>
+            The container can be any image that includes the Oachkatzl backend code and the additional tools you need.
+            Use the official worker image as a base and layer your dependencies on top:
+          </p>
+
+          <pre v-pre class="code-block"># Dockerfile.worker-gpu
+FROM lanbugsde/oachkatzl-worker:latest
+
+# Install extra system packages
+RUN apt-get update && apt-get install -y terraform kubectl && rm -rf /var/lib/apt/lists/*
+
+# Install extra Python packages
+RUN pip install boto3 kubernetes</pre>
+
+          <div class="callout info">
+            <strong>Multiple queues on one worker:</strong> Set a comma-separated list to consume several queues at once —
+            e.g. <code>OACHKATZL_WORKER_QUEUES=gpu,default</code>. This is useful for a "catch-all" secondary worker
+            that handles both custom and default tasks.
+          </div>
+
+          <h3>Step 3 — Assign a pool to a Template</h3>
+          <p>
+            Open the template editor. If at least one Worker Pool exists, a <strong>Worker pool</strong> dropdown appears
+            in the <em>Basic info</em> section. Select the pool; the hint below the dropdown shows the queue name
+            the worker must listen to.
+          </p>
+          <p>Leave it at <em>Default worker</em> to keep using the standard <code>celery</code> queue.</p>
+
+          <h3>Step 4 — Assign a pool to a Custom App (optional)</h3>
+          <p>
+            In <strong>Settings → Custom Apps</strong>, each app can have a <strong>default worker pool</strong>.
+            This pool applies automatically to every template that uses this app type — unless the template overrides it
+            with its own pool selection.
+          </p>
+          <p>
+            Use this to guarantee, for example, that the <code>terraform</code> custom app always runs on a worker
+            that has Terraform installed, without requiring every template author to remember to set the pool.
+          </p>
+
+          <h3>Pool resolution order</h3>
+          <p>When a task is enqueued, the target queue is resolved in this priority order:</p>
+          <ol>
+            <li><strong>Template's worker pool</strong> — set directly on the template (highest priority).</li>
+            <li><strong>Custom App's worker pool</strong> — the default pool of the app type used by the template.</li>
+            <li><strong>Default queue</strong> (<code>celery</code>) — if neither template nor app specifies a pool.</li>
+          </ol>
+
+          <h3>Environment variable reference</h3>
+          <table class="help-table">
+            <thead><tr><th>Variable</th><th>Set on</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>OACHKATZL_WORKER_QUEUES</code></td>
+                <td>Worker container</td>
+                <td>Comma-separated list of Celery queue names this worker consumes. Default: <code>celery</code>. Must match the <em>slug</em> of the Worker Pool defined in the UI.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Verifying the setup</h3>
+          <pre v-pre class="code-block"># List active workers and the queues they are listening to
+docker compose exec worker celery -A worker.celery inspect active_queues
+
+# Inspect the custom worker container
+docker compose exec worker-gpu celery -A worker.celery inspect active_queues</pre>
+
+          <p>
+            Create a template, assign it to your custom pool, and trigger a task.
+            The task should appear in the log of the custom worker container — not the default one.
+          </p>
+
+          <div class="callout warning">
+            <strong>No worker running for a pool?</strong> If a task is enqueued to a queue that no worker is consuming,
+            it remains in <code>waiting</code> status indefinitely. Oachkatzl does not currently detect this automatically.
+            Always ensure at least one worker is started for every active pool that templates use.
+          </div>
+
+          <h3>Practical example — Terraform runner</h3>
+          <p>Goal: run Terraform plans and applies on a dedicated worker with the correct binary and cloud credentials pre-installed.</p>
+
+          <ol>
+            <li>Create a Worker Pool: slug <code>terraform</code>, name <em>Terraform Worker</em>.</li>
+            <li>Build a custom image with <code>terraform</code> in <code>/usr/local/bin</code>.</li>
+            <li>Add a <code>worker-terraform</code> service in <code>docker-compose.yml</code> with <code>OACHKATZL_WORKER_QUEUES=terraform</code>.</li>
+            <li>Register a Custom App: slug <code>terraform</code>, executable <code>/usr/local/bin/terraform</code>, default pool → <em>Terraform Worker</em>.</li>
+            <li>Create templates using app type <em>terraform</em> — they automatically target the Terraform worker. No per-template pool selection needed.</li>
+          </ol>
+        </div>
+      </section>
+
       <!-- ── Schedules ── -->
       <section id="schedules">
         <h2 class="help-h2">Schedules</h2>
@@ -1075,7 +1220,7 @@ curl -X POST "https://oachkatzl.example.com/api/execute/&lt;token&gt;" \
           <table class="help-table">
             <tr><th>Channel</th><th>Configuration</th></tr>
             <tr><td>Slack</td><td>Incoming Webhook URL</td></tr>
-            <tr><td>E-Mail</td><td>Recipient selection (all members / specific members / custom addresses). Requires SMTP in Admin → Settings.</td></tr>
+            <tr><td>E-Mail</td><td>Recipient selection (all members / specific members / custom addresses). Requires SMTP configured under <strong>Settings</strong>.</td></tr>
             <tr><td>Telegram</td><td>Bot token + Chat ID</td></tr>
             <tr><td>Microsoft Teams</td><td>Incoming Webhook URL</td></tr>
             <tr><td>Gotify</td><td>Server URL + App token</td></tr>
@@ -1093,7 +1238,7 @@ curl -X POST "https://oachkatzl.example.com/api/execute/&lt;token&gt;" \
           <p>Enable this on the template to only receive notifications for <em>failed</em> runs, even if a notification rule has "on success" enabled.</p>
 
           <h3>SMTP configuration</h3>
-          <p>Configure in <strong>Admin → Settings</strong>:</p>
+          <p>Configure in <strong>Settings</strong> in the sidebar:</p>
           <table class="help-table">
             <tr><th>Key</th><th>Example</th></tr>
             <tr><td>SMTP_HOST</td><td><code>smtp.gmail.com</code></td></tr>

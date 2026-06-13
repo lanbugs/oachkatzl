@@ -4,22 +4,29 @@ import api from '@/api/client'
 import { Puzzle, Plus, Trash2 } from 'lucide-vue-next'
 
 const apps = ref<any[]>([])
+const workerPools = ref<any[]>([])
 const showNew = ref(false)
-const form = ref({ slug: '', title: '', executable: '', args_template: '{file} {arguments}', active: true })
+const emptyForm = () => ({ slug: '', title: '', executable: '', args_template: '{file} {arguments}', active: true, worker_pool_id: '' })
+const form = ref(emptyForm())
 const saving = ref(false)
 
 onMounted(async () => {
-  const { data } = await api.get('/custom-apps')
-  apps.value = data
+  const [appsRes, wpRes] = await Promise.all([
+    api.get('/custom-apps'),
+    api.get('/worker-pools'),
+  ])
+  apps.value = appsRes.data
+  workerPools.value = wpRes.data ?? []
 })
 
 async function createApp() {
   saving.value = true
   try {
-    const { data } = await api.post('/custom-apps', form.value)
+    const payload = { ...form.value, worker_pool_id: form.value.worker_pool_id || null }
+    const { data } = await api.post('/custom-apps', payload)
     apps.value.push(data)
     showNew.value = false
-    form.value = { slug: '', title: '', executable: '', args_template: '{file} {arguments}', active: true }
+    form.value = emptyForm()
   } finally {
     saving.value = false
   }
@@ -64,6 +71,14 @@ async function deleteApp(id: string) {
           <input v-model="form.args_template" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" />
           <p class="text-xs text-gray-400 mt-1">Placeholders: <code>{file}</code> <code>{arguments}</code></p>
         </div>
+        <div class="col-span-2">
+          <label class="block text-xs font-medium text-gray-600 mb-1">Worker pool (optional)</label>
+          <select v-model="form.worker_pool_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <option value="">— Default worker —</option>
+            <option v-for="wp in workerPools" :key="wp.id" :value="wp.id">{{ wp.name }} ({{ wp.slug }})</option>
+          </select>
+          <p class="text-xs text-gray-400 mt-1">Default pool for templates using this app type. Can be overridden per template.</p>
+        </div>
         <div class="col-span-2 flex gap-3">
           <button type="submit" :disabled="saving"
             class="bg-brand-600 hover:bg-brand-700 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-60">
@@ -89,6 +104,9 @@ async function deleteApp(id: string) {
               <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">{{ a.slug }}</code>
             </div>
             <p class="text-xs text-gray-400 font-mono">{{ a.executable }}</p>
+            <p v-if="a.worker_pool_name" class="text-xs text-blue-500 mt-0.5">
+              Pool: {{ a.worker_pool_name }}
+            </p>
           </div>
         </div>
         <button @click="deleteApp(a.id)" class="text-gray-300 hover:text-red-500 transition-colors">

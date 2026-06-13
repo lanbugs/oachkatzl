@@ -71,10 +71,36 @@ def create_task(
     return task
 
 
+_DEFAULT_QUEUE = "celery"
+
+
+def _resolve_queue(task: Task) -> str:
+    """Determine the Celery queue for a task.
+
+    Priority: template worker_pool > custom app worker_pool > default queue.
+    """
+    # Lazy imports ensure both documents are registered in the mongoengine
+    # document registry before we dereference their ReferenceFields.  The
+    # Celery worker context does not necessarily import models/__init__.py,
+    # so we cannot rely on package-level imports here.
+    from app.models.worker_pool import WorkerPool  # noqa: F401 — registers the document
+    from app.models.custom_app import CustomApp
+
+    tpl = task.template
+    if tpl.worker_pool:
+        return tpl.worker_pool.slug
+    if tpl.app not in ("ansible", "bash", "python"):
+        app_obj = CustomApp.objects(slug=tpl.app).first()
+        if app_obj and app_obj.worker_pool:
+            return app_obj.worker_pool.slug
+    return _DEFAULT_QUEUE
+
+
 def enqueue_task(task: Task) -> None:
     """Send task to Celery queue."""
     from app.tasks.run_task import run_task
-    run_task.delay(str(task.id))
+    queue = _resolve_queue(task)
+    run_task.apply_async(args=[str(task.id)], queue=queue)
 
 
 def stop_task(task: Task) -> None:

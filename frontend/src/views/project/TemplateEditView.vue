@@ -18,6 +18,7 @@ const inventories = ref<any[]>([])
 const environments = ref<any[]>([])
 const keys = ref<any[]>([])
 const customApps = ref<any[]>([])
+const workerPools = ref<any[]>([])
 const allCredentials = ref<any[]>([])
 const allCredentialTypes = ref<any[]>([])
 const artifactCaches = ref<any[]>([])
@@ -40,6 +41,7 @@ const form = ref({
   start_version: '',       // build type: e.g. "1.0.0"
   build_template_id: '',   // deploy type: linked build template
   artifact_cache_id: '',   // optional: artifact cache for this template
+  worker_pool_id: '',      // optional: custom worker pool
 })
 
 interface SurveyVar {
@@ -77,7 +79,7 @@ const vaultKeysOptions = computed(() => keys.value.filter(k => k.type === 'vault
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 onMounted(async () => {
-  const [reposRes, invRes, envRes, keysRes, appsRes, tmplRes, credsRes, ctRes, acRes] = await Promise.all([
+  const [reposRes, invRes, envRes, keysRes, appsRes, tmplRes, credsRes, ctRes, acRes, wpRes] = await Promise.all([
     projectsApi.listRepos(projectId.value),
     projectsApi.listInventories(projectId.value),
     projectsApi.listEnvironments(projectId.value),
@@ -87,12 +89,14 @@ onMounted(async () => {
     projectsApi.listCredentials(projectId.value),
     api.get('/credential-types'),
     api.get(`/projects/${projectId.value}/artifact-caches`),
+    api.get('/worker-pools'),
   ])
   repos.value = reposRes.data
   inventories.value = invRes.data
   environments.value = envRes.data
   keys.value = keysRes.data
   customApps.value = appsRes.data
+  workerPools.value = wpRes.data ?? []
   allCredentials.value = credsRes.data
   allCredentialTypes.value = ctRes.data
   artifactCaches.value = acRes.data ?? []
@@ -118,6 +122,8 @@ onMounted(async () => {
       autorun: data.autorun || false,
       start_version: data.start_version || '',
       build_template_id: data.build_template_id || '',
+      artifact_cache_id: data.artifact_cache_id || '',
+      worker_pool_id: data.worker_pool_id || '',
     }
     argumentsRaw.value = formatArgs(data.arguments)
     surveyVars.value = (data.survey_vars || []).map((sv: any) => ({
@@ -198,6 +204,7 @@ async function save() {
       })),
       credential_ids: selectedCredentialIds.value,
       artifact_cache_id: form.value.artifact_cache_id || null,
+      worker_pool_id: form.value.worker_pool_id || null,
       vaults: vaultKeys.value.filter(v => v.vault_id && v.key_id).map(v => ({
         vault_id: v.vault_id,
         name: v.name,
@@ -266,6 +273,21 @@ const playbookPlaceholder = computed(() => {
               <option value="build">Build — produces a versioned artifact</option>
               <option value="deploy">Deploy — deploys a build artifact</option>
             </select>
+          </div>
+
+          <!-- Worker Pool -->
+          <div v-if="workerPools.length > 0" class="col-span-2">
+            <label class="label">Worker pool</label>
+            <select v-model="form.worker_pool_id" class="input">
+              <option value="">— Default worker —</option>
+              <option v-for="wp in workerPools" :key="wp.id" :value="wp.id">
+                {{ wp.name }} <template v-if="wp.slug">({{ wp.slug }})</template>
+              </option>
+            </select>
+            <p class="text-xs text-gray-400 mt-1">
+              Assign this template to a custom worker pool. The worker must consume queue
+              <code class="bg-gray-100 px-1 rounded">{{ form.worker_pool_id ? (workerPools.find(w => w.id === form.worker_pool_id)?.slug ?? '…') : 'celery' }}</code>.
+            </p>
           </div>
 
           <!-- Build: start version -->

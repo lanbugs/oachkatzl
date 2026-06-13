@@ -62,6 +62,8 @@ def _tmpl_out(t) -> dict:
         "autorun":           bool(t.autorun),
         "credential_ids":    [str(c.id) for c in (t.credentials or []) if c],
         "artifact_cache_id": str(t.artifact_cache.id) if t.artifact_cache else None,
+        "worker_pool_id":    str(t.worker_pool.id) if t.worker_pool else None,
+        "worker_pool_name":  t.worker_pool.name if t.worker_pool else None,
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
 
@@ -73,6 +75,16 @@ def _resolve_artifact_cache(cache_id: str | None, project):
     try:
         return ArtifactCache.objects.get(id=cache_id, project=project)
     except ArtifactCache.DoesNotExist:
+        return None
+
+
+def _resolve_worker_pool(pool_id: str | None):
+    if not pool_id:
+        return None
+    from app.models.worker_pool import WorkerPool
+    try:
+        return WorkerPool.objects.get(id=pool_id)
+    except WorkerPool.DoesNotExist:
         return None
 
 
@@ -170,6 +182,7 @@ def create_template(project_id, body):
         autorun=body.get("autorun", False),
         credentials=_resolve_credentials(body.get("credential_ids", []), g.project),
         artifact_cache=_resolve_artifact_cache(body.get("artifact_cache_id"), g.project),
+        worker_pool=_resolve_worker_pool(body.get("worker_pool_id")),
     ).save()
     return _tmpl_out(t)
 
@@ -231,6 +244,7 @@ def update_template(project_id, template_id, body):
         if new_type == "deploy" else None
     t.credentials = _resolve_credentials(body.get("credential_ids", []), g.project)
     t.artifact_cache = _resolve_artifact_cache(body.get("artifact_cache_id"), g.project)
+    t.worker_pool = _resolve_worker_pool(body.get("worker_pool_id"))
     t.save()
     return _tmpl_out(t)
 

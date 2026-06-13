@@ -59,6 +59,7 @@ class TemplateIn(Schema):
     autorun = Boolean(load_default=False)
     credential_ids     = List(String(), load_default=[])
     artifact_cache_id  = String(load_default=None)
+    worker_pool_id     = String(load_default=None)
 
 
 class TemplateOut(Schema):
@@ -83,4 +84,6 @@ class TemplateOut(Schema):
     autorun            = Boolean(dump_default=False)
     credential_ids     = List(String(), dump_default=[])
     artifact_cache_id  = String(dump_default=None)
+    worker_pool_id     = String(dump_default=None)
+    worker_pool_name   = String(dump_default=None)
     created_at = String()

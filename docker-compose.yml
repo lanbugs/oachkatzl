@@ -56,7 +56,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
-    command: celery -A worker.celery worker -l info -c 4
+    # OACHKATZL_WORKER_QUEUES controls which Celery queue(s) this worker consumes.
+    # Default: "celery" (the built-in Celery default queue).
+    # Custom worker images set this to their pool slug, e.g. OACHKATZL_WORKER_QUEUES=gpu
+    command: >-
+      sh -c "celery -A worker.celery worker -l info -c 4 -Q $${OACHKATZL_WORKER_QUEUES:-celery}"
     restart: unless-stopped
     depends_on:
       mongo: { condition: service_healthy }
@@ -67,9 +71,30 @@ services:
     env_file: .env
     environment:
       OACHKATZL_PIP_INDEX_URL: "http://devpi:3141/root/pypi/+simple/"
+      # Override via .env or environment block to route to a custom worker pool.
+      # Example: OACHKATZL_WORKER_QUEUES=gpu
+      OACHKATZL_WORKER_QUEUES: "${OACHKATZL_WORKER_QUEUES:-celery}"
     volumes:
       - /tmp/oachkatzl:/tmp/oachkatzl
       - pip_cache:/root/.cache/pip
+
+  # Example: a second worker for a custom pool called "gpu".
+  # Uncomment and adapt the image/command to your needs.
+  # worker-gpu:
+  #   image: my-gpu-worker-image:latest   # custom image with GPU drivers etc.
+  #   command: >-
+  #     sh -c "celery -A worker.celery worker -l info -c 2 -Q gpu"
+  #   restart: unless-stopped
+  #   depends_on:
+  #     mongo: { condition: service_healthy }
+  #     redis: { condition: service_healthy }
+  #   env_file: .env
+  #   environment:
+  #     OACHKATZL_WORKER_QUEUES: "gpu"
+  #     OACHKATZL_PIP_INDEX_URL: "http://devpi:3141/root/pypi/+simple/"
+  #   volumes:
+  #     - /tmp/oachkatzl:/tmp/oachkatzl
+  #     - pip_cache:/root/.cache/pip
 
   beat:
     build:

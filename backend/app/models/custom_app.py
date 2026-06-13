@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mongoengine import BooleanField, Document, StringField
+from mongoengine import BooleanField, Document, ReferenceField, StringField, NULLIFY
 
 BUILTIN_APP_TYPES = frozenset({"ansible", "bash", "python"})
 
@@ -19,3 +19,4 @@ class CustomApp(Document):
     # Placeholders: {file} {arguments} {survey_vars_json}
     args_template = StringField(default="{file} {arguments}")
     active = BooleanField(default=True)
+    worker_pool = ReferenceField("app.models.worker_pool.WorkerPool", null=True, reverse_delete_rule=NULLIFY)

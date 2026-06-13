@@ -39,6 +39,7 @@ const router = createRouter({
         },
         { path: 'admin/users', name: 'admin-users', component: () => import('@/views/admin/UsersView.vue'), meta: { admin: true } },
         { path: 'admin/custom-apps', name: 'admin-custom-apps', component: () => import('@/views/admin/CustomAppsView.vue'), meta: { admin: true } },
+        { path: 'admin/worker-pools', name: 'admin-worker-pools', component: () => import('@/views/admin/WorkerPoolsView.vue'), meta: { admin: true } },
         { path: 'admin/credential-types', name: 'admin-credential-types', component: () => import('@/views/admin/CredentialTypesView.vue'), meta: { admin: true } },
         { path: 'admin/smtp', redirect: '/admin/settings' },
         { path: 'admin/settings', name: 'admin-settings', component: () => import('@/views/admin/GlobalSettingsView.vue'), meta: { admin: true } },
