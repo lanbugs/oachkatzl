@@ -13,13 +13,16 @@ import '@vue-flow/core/dist/style.css'
 
 import StartNodeComp from './workflow/StartNode.vue'
 import TemplateNodeComp from './workflow/TemplateNode.vue'
+import QuestionNodeComp from './workflow/QuestionNode.vue'
 import ConditionEdgeComp from './workflow/ConditionEdge.vue'
-import { X, Trash2, LayoutDashboard } from 'lucide-vue-next'
+import { X, Trash2, LayoutDashboard, HelpCircle, Play } from 'lucide-vue-next'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export interface WNode {
   node_id: string
+  node_type: 'task' | 'question'
+  slug: string
   label: string
   template_id: string | null
   on_success: string[]
@@ -57,6 +60,7 @@ const { fitView } = useVueFlow({ id: flowId })
 const nodeTypes = {
   start: markRaw(StartNodeComp),
   template: markRaw(TemplateNodeComp),
+  question: markRaw(QuestionNodeComp),
 } as any
 const edgeTypes = { condition: markRaw(ConditionEdgeComp) } as any
 
@@ -68,6 +72,8 @@ const vfEdges = ref<any[]>([])
 
 const showAddModal = ref(false)
 const pendingEdge = ref<{ sourceId: string; condition: Condition } | null>(null)
+const modalNodeType = ref<'task' | 'question'>('task')
+const modalSlug = ref('')
 const modalTemplateId = ref('')
 const modalLabel = ref('')
 
@@ -234,14 +240,17 @@ function toVF(nodes: WNode[]) {
     ...nodes.map(n => {
       const pos = posMap ? posMap.get(n.node_id) ?? { x: 400, y: 200 } : { x: n.position_x, y: n.position_y }
       const nodeId = n.node_id
+      const isQuestion = n.node_type === 'question'
       return {
         id: nodeId,
-        type: 'template',
+        type: isQuestion ? 'question' : 'template',
         position: pos,
         data: {
           label: n.label,
-          template_id: n.template_id,
-          template_name: props.templates.find(t => t.id === n.template_id)?.name ?? '',
+          node_type: n.node_type ?? 'task',
+          slug: n.slug ?? '',
+          template_id: isQuestion ? null : n.template_id,
+          template_name: isQuestion ? '' : (props.templates.find(t => t.id === n.template_id)?.name ?? ''),
           onAddNode: (cond: Condition) => openAddModal(nodeId, cond),
           onLinkNode: () => openLinkModal(nodeId),
         },
@@ -278,8 +287,10 @@ function fromVF(): WNode[] {
     if (vn.id === '__start__') continue
     const node: WNode = {
       node_id: vn.id,
+      node_type: (vn.data.node_type ?? (vn.type === 'question' ? 'question' : 'task')) as 'task' | 'question',
+      slug: vn.data.slug ?? '',
       label: vn.data.label ?? '',
-      template_id: vn.data.template_id ?? null,
+      template_id: vn.type === 'question' ? null : (vn.data.template_id ?? null),
       on_success: [],
       on_failure: [],
       on_always: [],
@@ -366,6 +377,8 @@ function onPaneClick() {
 
 function openAddModal(sourceId: string, condition: Condition) {
   pendingEdge.value = { sourceId, condition }
+  modalNodeType.value = 'task'
+  modalSlug.value = ''
   modalTemplateId.value = ''
   modalLabel.value = ''
   showAddModal.value = true
@@ -404,8 +417,10 @@ function confirmAddNode() {
 
   updatedWNodes.push({
     node_id: newId,
+    node_type: modalNodeType.value,
+    slug: modalNodeType.value === 'question' ? modalSlug.value.trim() : '',
     label: modalLabel.value,
-    template_id: modalTemplateId.value || null,
+    template_id: modalNodeType.value === 'question' ? null : (modalTemplateId.value || null),
     on_success: [],
     on_failure: [],
     on_always: [],
@@ -483,6 +498,15 @@ function updateLabel(label: string) {
   if (!selectedNodeId.value) return
   vfNodes.value = vfNodes.value.map((n: any) =>
     n.id === selectedNodeId.value ? { ...n, data: { ...n.data, label } } : n
+  )
+  updateSelectedVfNode()
+  emitUpdate()
+}
+
+function updateSlug(slug: string) {
+  if (!selectedNodeId.value) return
+  vfNodes.value = vfNodes.value.map((n: any) =>
+    n.id === selectedNodeId.value ? { ...n, data: { ...n.data, slug: slug.trim() } } : n
   )
   updateSelectedVfNode()
   emitUpdate()
@@ -567,7 +591,7 @@ function deleteSelectedNode() {
             <Trash2 class="w-3.5 h-3.5" /> Delete node
           </button>
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid gap-3" :class="selectedVfNode.type === 'question' ? 'grid-cols-1' : 'grid-cols-2'">
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Label</label>
             <input
@@ -578,7 +602,7 @@ function deleteSelectedNode() {
               placeholder="Optional label"
             />
           </div>
-          <div>
+          <div v-if="selectedVfNode.type !== 'question'">
             <label class="block text-xs font-medium text-gray-600 mb-1">Template</label>
             <select
               :value="selectedVfNode.data.template_id ?? ''"
@@ -588,6 +612,19 @@ function deleteSelectedNode() {
               <option value="">— none —</option>
               <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
             </select>
+          </div>
+          <div v-else class="space-y-2">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Artifact slug</label>
+              <input
+                :value="selectedVfNode.data.slug ?? ''"
+                @input="updateSlug(($event.target as HTMLInputElement).value)"
+                type="text"
+                class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                placeholder="e.g. deploy-approval"
+              />
+              <p class="text-[11px] text-gray-400 mt-0.5">Name of the JSON artifact uploaded by the previous task.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -697,7 +734,34 @@ function deleteSelectedNode() {
               </span>
             </div>
 
+            <!-- Node type selector -->
             <div>
+              <label class="block text-xs font-medium text-gray-600 mb-2">Node type</label>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  @click="modalNodeType = 'task'"
+                  class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalNodeType === 'task'
+                    ? 'bg-brand-600 border-brand-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                >
+                  <Play class="w-3 h-3" /> Task
+                </button>
+                <button
+                  type="button"
+                  @click="modalNodeType = 'question'"
+                  class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalNodeType === 'question'
+                    ? 'bg-amber-500 border-amber-500 text-white'
+                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                >
+                  <HelpCircle class="w-3 h-3" /> Approval Gate
+                </button>
+              </div>
+            </div>
+
+            <div v-if="modalNodeType === 'task'">
               <label class="block text-xs font-medium text-gray-600 mb-1">
                 Template <span class="text-gray-400 font-normal">(optional)</span>
               </label>
@@ -708,6 +772,25 @@ function deleteSelectedNode() {
                 <option value="">— none —</option>
                 <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
               </select>
+            </div>
+
+            <div v-else class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">
+                  Artifact slug <span class="text-red-500">*</span>
+                </label>
+                <input
+                  v-model="modalSlug"
+                  type="text"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  placeholder="e.g. deploy-approval"
+                  pattern="[a-z0-9][a-z0-9_-]*"
+                />
+                <p class="text-[11px] text-gray-400 mt-1">
+                  The preceding task uploads a JSON artifact with this name containing
+                  <code class="bg-gray-100 px-1 rounded">{"title": "...", "text": "..."}</code>.
+                </p>
+              </div>
             </div>
 
             <div>

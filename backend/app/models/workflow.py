@@ -23,6 +23,8 @@ class WorkflowNode(EmbeddedDocument):
     """A single node in the workflow DAG."""
 
     node_id = StringField(required=True)       # uuid4 string, unique within workflow
+    node_type = StringField(default="task", choices=("task", "question"))
+    slug = StringField(default="")             # user-defined artifact key for question nodes
     label = StringField(default="")
     template = ReferenceField(Template)         # no reverse_delete_rule in EmbeddedDocument
     on_success = ListField(StringField())       # node_ids to activate when this node succeeds

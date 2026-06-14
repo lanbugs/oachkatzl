@@ -75,6 +75,8 @@ async function loadWorkflow() {
     artifactCacheId.value = data.artifact_cache_id ?? ''
     nodes.value = (data.nodes ?? []).map((n: any) => ({
       node_id: n.node_id,
+      node_type: n.node_type ?? 'task',
+      slug: n.slug ?? '',
       label: n.label ?? '',
       template_id: n.template_id ?? null,
       on_success: n.on_success ?? [],
@@ -124,8 +126,10 @@ async function save() {
     artifact_cache_id: artifactCacheId.value || null,
     nodes: nodes.value.map(n => ({
       node_id: n.node_id,
+      node_type: n.node_type ?? 'task',
+      slug: n.node_type === 'question' ? (n.slug || '') : '',
       label: n.label,
-      template_id: n.template_id || null,
+      template_id: n.node_type === 'question' ? null : (n.template_id || null),
       on_success: n.on_success,
       on_failure: n.on_failure,
       on_always: n.on_always,

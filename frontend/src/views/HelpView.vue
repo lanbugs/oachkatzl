@@ -14,6 +14,7 @@ const sections = [
   { id: 'survey',         label: 'Survey Variables' },
   { id: 'tasks',          label: 'Running Tasks' },
   { id: 'workflows',      label: 'Workflows' },
+  { id: 'approval-gate', label: 'Approval Gates' },
   { id: 'artifacts',      label: 'Artifact Cache' },
   { id: 'pip-proxy',      label: 'pip Package Proxy' },
   { id: 'scaling',        label: 'Scaling Workers' },
@@ -622,6 +623,163 @@ kubectl rollout status deployment/myapp</pre>
             <strong>Tip:</strong> Use <em>On Failure</em> edges to build error-handling branches —
             for example, a rollback playbook that only runs when the deploy node fails.
           </div>
+        </div>
+      </section>
+
+      <!-- ── Approval Gates ── -->
+      <section id="approval-gate">
+        <h2 class="help-h2">Approval Gates</h2>
+        <div class="prose-box">
+          <p>
+            An <strong>Approval Gate</strong> is a special workflow node that <em>pauses</em> the entire workflow run
+            and waits for a human decision before execution continues. When the gate is reached, a modal dialog
+            appears in the run view with a question and two choices: <strong>Proceed</strong> or <strong>Cancel</strong>.
+          </p>
+
+          <div class="callout info">
+            Approval Gates are only available inside <strong>Workflows</strong>. They have no associated template
+            and do not consume a task slot — they are purely a coordination mechanism.
+          </div>
+
+          <h3>Adding an Approval Gate to a workflow</h3>
+          <ol>
+            <li>Open your workflow in the editor (<strong>Project → Workflows → Edit</strong>).</li>
+            <li>Hover over any node to reveal the toolbar and click one of the condition buttons (✓ / ✗ / →).</li>
+            <li>In the <em>Add node</em> dialog, click <strong>Approval Gate</strong> instead of Task.</li>
+            <li>Enter a <strong>slug</strong> (e.g. <code>deploy-approval</code>) — this is the artifact name your preceding task must use. Also optionally enter a <strong>label</strong> for display on the canvas.</li>
+            <li>Click <em>Add node</em>. The new node appears as an amber card with a <strong>?</strong> icon.</li>
+          </ol>
+
+          <h3>Visual appearance</h3>
+          <table class="help-table">
+            <thead><tr><th>State</th><th>Color / border</th><th>Status badge</th></tr></thead>
+            <tbody>
+              <tr><td>Editor (idle)</td><td>Amber background, amber border</td><td>—</td></tr>
+              <tr><td>Run view — pending</td><td>Light slate</td><td>Pending</td></tr>
+              <tr><td>Run view — waiting for input</td><td>Amber background, amber border (pulsing)</td><td>Approval</td></tr>
+              <tr><td>Run view — approved</td><td>Green background</td><td>Success</td></tr>
+              <tr><td>Run view — rejected</td><td>Orange background</td><td>Stopped</td></tr>
+            </tbody>
+          </table>
+
+          <h3>What happens when the gate is reached</h3>
+          <ol>
+            <li>The workflow run status switches to <strong>Awaiting Approval</strong>.</li>
+            <li>All users with at least the <code>task_runner</code> role can see the run and respond.</li>
+            <li>A <strong>modal dialog</strong> appears automatically when the run view is open.</li>
+            <li>The modal shows a title and optional description text (sourced from an artifact — see below). If no artifact is found, <em>"Proceed?"</em> is shown as the default.</li>
+            <li>The user clicks <strong>Proceed</strong> or <strong>Cancel</strong>.</li>
+          </ol>
+
+          <h3>Outcomes</h3>
+          <table class="help-table">
+            <thead><tr><th>Decision</th><th>Gate node status</th><th>What happens next</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Proceed</strong></td>
+                <td><span class="badge green">success</span></td>
+                <td>
+                  The workflow resumes. Downstream nodes connected with <em>On Success</em> or <em>Always</em>
+                  edges are started; <em>On Failure</em> branches are skipped.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Cancel</strong></td>
+                <td><span class="badge orange">stopped</span></td>
+                <td>
+                  The workflow is immediately stopped. All remaining <em>pending</em> nodes are marked as
+                  <em>skipped</em>. No further tasks are executed.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Customising the approval question with an artifact</h3>
+          <p>
+            The gate reads its title and description text from a <strong>JSON artifact</strong> uploaded by
+            the task that runs <em>immediately before</em> it. The artifact name must match the gate's
+            <strong>slug</strong> — a short, human-readable identifier you define when creating the node.
+          </p>
+
+          <div class="callout info">
+            <strong>Where to set the slug:</strong> When adding a node and selecting <em>Approval Gate</em>,
+            fill in the <strong>Artifact slug</strong> field (e.g. <code>deploy-approval</code>). You can also
+            change it later by clicking the node and editing the slug in the panel below the canvas.
+            The slug is shown on the node card in small amber monospace text.
+          </div>
+
+          <p>The artifact must be uploaded as a <strong>JSON artifact</strong> with this structure:</p>
+          <pre v-pre class="code-block">{
+  "name": "&lt;slug&gt;",
+  "data": {
+    "title": "Deploy to production?",
+    "text":  "This will push version 2.4.1 to all production nodes.\nMake sure the staging tests passed."
+  }
+}</pre>
+
+          <h3>Example — Bash task before the gate</h3>
+          <pre v-pre class="code-block">#!/bin/bash
+# SLUG must match the "Artifact slug" set on the Approval Gate node in the editor
+SLUG="deploy-approval"
+
+TITLE="Deploy $APP_VERSION to production?"
+TEXT="Staging tests: PASSED\nAffected hosts: web-01, web-02, web-03\nScheduled downtime: none"
+
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"$SLUG\", \"data\": {\"title\": \"$TITLE\", \"text\": \"$TEXT\"}}"</pre>
+
+          <h3>Example — Python task before the gate</h3>
+          <pre v-pre class="code-block">import os, requests
+
+slug = "deploy-approval"   # must match the "Artifact slug" on the gate node
+
+resp = requests.post(
+    os.environ["OACHKATZL_ARTIFACT_URL"],
+    headers={"X-Artifact-Token": os.environ["OACHKATZL_ARTIFACT_TOKEN"]},
+    json={
+        "name": slug,
+        "data": {
+            "title": f"Deploy {os.environ.get('APP_VERSION', '?')} to production?",
+            "text":  "Staging smoke tests passed. Confirm production rollout.",
+        },
+    },
+)
+resp.raise_for_status()</pre>
+
+          <div class="callout info">
+            <strong>Artifact cache required:</strong> The workflow must have an <strong>Artifact Cache</strong>
+            configured (Workflows editor → Artifact Cache dropdown) for the approval question text to be stored
+            and retrieved. Without a cache, the gate still works but always shows the default <em>"Proceed?"</em>
+            message.
+          </div>
+
+          <h3>Connecting gate outputs to downstream nodes</h3>
+          <p>The gate node supports all three edge types:</p>
+          <table class="help-table">
+            <thead><tr><th>Edge condition</th><th>Fires when</th><th>Typical use</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge green">✓ On Success</span></td><td>User clicked <em>Proceed</em></td><td>Continue the happy path — deploy, notify, etc.</td></tr>
+              <tr><td><span class="badge red">✗ On Failure</span></td><td>— (never — rejection sets the node to <em>stopped</em>, not error)</td><td>Not typically used</td></tr>
+              <tr><td><span class="badge gray">→ Always</span></td><td>Either decision</td><td>Cleanup / audit logging regardless of outcome</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout warning">
+            <strong>Rejection terminates the run immediately.</strong>
+            Unlike a failed task (which still propagates through <em>On Failure</em> edges), a rejected gate
+            skips all remaining pending nodes and sets the run status to <em>stopped</em>. Design your workflow
+            accordingly: add an <em>Always</em> edge if you need cleanup steps to run even after rejection.
+          </div>
+
+          <h3>Scheduling workflows with approval gates</h3>
+          <p>
+            Workflows containing approval gates can be scheduled, but consider whether an unattended schedule
+            makes sense — the workflow will pause indefinitely at the gate until a user responds. If no one is
+            monitoring the run view, the workflow will remain in <em>Awaiting Approval</em> status until action
+            is taken.
+          </p>
         </div>
       </section>
 

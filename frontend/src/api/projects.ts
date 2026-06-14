@@ -83,4 +83,10 @@ export const projectsApi = {
     api.get(`/projects/${pid}/workflow-runs/`, { params: { page, per_page: perPage } }),
   getWorkflowRun: (pid: string, runId: string) => api.get(`/projects/${pid}/workflow-runs/${runId}`),
   stopWorkflowRun: (pid: string, runId: string) => api.post(`/projects/${pid}/workflow-runs/${runId}/stop`),
+  getWorkflowApprovalInfo: (pid: string, runId: string) =>
+    api.get(`/projects/${pid}/workflow-runs/${runId}/approval`),
+  approveWorkflowRun: (pid: string, runId: string) =>
+    api.post(`/projects/${pid}/workflow-runs/${runId}/approve`),
+  rejectWorkflowRun: (pid: string, runId: string) =>
+    api.post(`/projects/${pid}/workflow-runs/${runId}/reject`),
 }

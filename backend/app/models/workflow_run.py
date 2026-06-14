@@ -17,8 +17,8 @@ from mongoengine import (
 from app.models.project import Project
 from app.models.user import User
 
-WORKFLOW_RUN_STATUSES = ("waiting", "running", "success", "error", "stopped")
-WORKFLOW_NODE_RUN_STATUSES = ("pending", "running", "success", "error", "skipped", "stopped")
+WORKFLOW_RUN_STATUSES = ("waiting", "running", "waiting_approval", "success", "error", "stopped")
+WORKFLOW_NODE_RUN_STATUSES = ("pending", "running", "waiting_approval", "success", "error", "skipped", "stopped")
 
 
 class WorkflowNodeRun(EmbeddedDocument):
@@ -43,6 +43,7 @@ class WorkflowRun(Document):
     user = ReferenceField(User, null=True, reverse_delete_rule=NULLIFY)
     survey_answers = StringField(default="{}")   # JSON string
     artifact_run = ReferenceField("app.models.artifact.ArtifactRun", null=True)
+    pending_approval_node_id = StringField(default="")   # node_id of the question node waiting for approval
     created_at = DateTimeField(default=datetime.datetime.utcnow)
     start = DateTimeField()
     end = DateTimeField()

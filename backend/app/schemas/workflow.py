@@ -7,6 +7,8 @@ from app.schemas.template import SurveyVarIn, SurveyVarOut
 
 class WorkflowNodeIn(Schema):
     node_id = String(required=True)
+    node_type = String(load_default="task")
+    slug = String(load_default="")
     label = String(load_default="")
     template_id = String(load_default=None)
     on_success = List(String(), load_default=[])
@@ -18,6 +20,8 @@ class WorkflowNodeIn(Schema):
 
 class WorkflowNodeOut(Schema):
     node_id = String()
+    node_type = String(dump_default="task")
+    slug = String(dump_default="")
     label = String()
     template_id = String(dump_default=None)
     template_name = String(dump_default="")
@@ -53,6 +57,7 @@ class WorkflowTemplateOut(Schema):
 
 class WorkflowNodeRunOut(Schema):
     node_id = String()
+    node_type = String(dump_default="task")
     task_id = String(dump_default="")
     status = String()
     edges_fired = Boolean()
@@ -70,6 +75,7 @@ class WorkflowRunOut(Schema):
     user_id = String(dump_default=None)
     username = String(dump_default=None)
     survey_answers = String(dump_default="{}")
+    pending_approval_node_id = String(dump_default="")
     created_at = String(dump_default=None)
     start = String(dump_default=None)
     end = String(dump_default=None)

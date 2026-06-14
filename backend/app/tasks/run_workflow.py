@@ -353,7 +353,13 @@ def advance_workflow(self, workflow_run_id: str) -> None:
 
                 if decision == "start":
                     log.debug("Workflow %s: starting node %s", workflow_run_id, nr.node_id)
-                    if node:
+                    if node and getattr(node, "node_type", "task") == "question":
+                        # Pause for user approval — advance_workflow will not be rescheduled
+                        log.info("Workflow %s: question node %s reached, pausing for approval",
+                                 workflow_run_id, nr.node_id)
+                        nr.status = "waiting_approval"
+                        changed = True
+                    elif node:
                         wf_artifact_run = run.artifact_run if run.artifact_run else None
                         task = _start_node_task(node, run, survey_dict, artifact_run=wf_artifact_run)
                         if task is not None:
@@ -362,11 +368,12 @@ def advance_workflow(self, workflow_run_id: str) -> None:
                         else:
                             nr.status = "skipped"
                             nr.edges_fired = True
+                        changed = True
                     else:
                         log.warning("Node %s missing from workflow — skipping", nr.node_id)
                         nr.status = "skipped"
                         nr.edges_fired = True
-                    changed = True
+                        changed = True
 
                 elif decision == "skip":
                     preds = incoming.get(nr.node_id, {})
@@ -385,12 +392,19 @@ def advance_workflow(self, workflow_run_id: str) -> None:
                 # decision == "wait": nothing to do this iteration
 
         # ── Step 3: Finalize or reschedule ───────────────────────────────
-        running_or_pending = [nr for nr in nr_map.values() if nr.status not in TERMINAL]
-
         # Always assign from nr_map to avoid mongoengine tracking ambiguity
         run.node_runs = list(nr_map.values())
 
-        if not running_or_pending:
+        # Check if a question node is waiting for approval — halt polling until user decides
+        approval_nr = next((nr for nr in nr_map.values() if nr.status == "waiting_approval"), None)
+        if approval_nr:
+            run.status = "waiting_approval"
+            run.pending_approval_node_id = approval_nr.node_id
+            run.save()
+            return  # approve/reject API will re-trigger advance_workflow
+
+        non_terminal = [nr for nr in nr_map.values() if nr.status not in TERMINAL]
+        if not non_terminal:
             nr_map_final = {nr.node_id: nr for nr in nr_map.values()}
             run.status = _final_status(list(nr_map.values()), node_map, nr_map_final)
             run.end = datetime.datetime.utcnow()

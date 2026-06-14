@@ -44,6 +44,8 @@ def _node_out(node) -> dict:
             pass
     return {
         "node_id": node.node_id,
+        "node_type": getattr(node, "node_type", "task") or "task",
+        "slug": getattr(node, "slug", "") or "",
         "label": node.label or "",
         "template_id": tmpl_id,
         "template_name": tmpl_name,
@@ -86,11 +88,13 @@ def _node_run_out(nr, node_map: dict) -> dict:
     label = ""
     tmpl_name = ""
     tmpl_id = None
+    node_type = "task"
     on_success: list = []
     on_failure: list = []
     on_always:  list = []
     if node:
         label = node.label or ""
+        node_type = getattr(node, "node_type", "task") or "task"
         on_success = list(node.on_success or [])
         on_failure = list(node.on_failure or [])
         on_always  = list(node.on_always  or [])
@@ -102,6 +106,7 @@ def _node_run_out(nr, node_map: dict) -> dict:
                 pass
     return {
         "node_id":      nr.node_id,
+        "node_type":    node_type,
         "task_id":      nr.task_id or "",
         "status":       nr.status,
         "edges_fired":  bool(nr.edges_fired),
@@ -159,6 +164,7 @@ def _run_out(run) -> dict:
         "user_id": str(run.user.id) if run.user else None,
         "username": run.user.username if run.user else None,
         "survey_answers": run.survey_answers or "{}",
+        "pending_approval_node_id": run.pending_approval_node_id or "",
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "start": run.start.isoformat() if run.start else None,
         "end": run.end.isoformat() if run.end else None,
@@ -351,6 +357,126 @@ def stop_workflow_run(project_id, run_id):
     return {"message": "Stop signal sent"}, 200
 
 
+@bp.get("/api/projects/<project_id>/workflow-runs/<run_id>/approval")
+@require_project_role("owner", "manager", "task_runner")
+def get_approval_info(project_id, run_id):
+    """Return the title/text for the pending approval question node.
+
+    Reads a JSON artifact named after the pending node_id from the workflow
+    run's artifact run. Falls back to a default message if not found.
+    """
+    from app.models.workflow_run import WorkflowRun
+    try:
+        run = WorkflowRun.objects.get(id=run_id, project=g.project)
+    except WorkflowRun.DoesNotExist:
+        raise HTTPError(404, "Workflow run not found")
+
+    if run.status != "waiting_approval" or not run.pending_approval_node_id:
+        raise HTTPError(400, "No pending approval for this run")
+
+    node_id = run.pending_approval_node_id
+    title = "Proceed?"
+    text = ""
+    slug = ""
+
+    # Resolve the slug from the workflow node definition
+    try:
+        wf = run.workflow
+        if wf:
+            for n in (wf.nodes or []):
+                if n.node_id == node_id:
+                    slug = getattr(n, "slug", "") or ""
+                    break
+    except Exception as exc:
+        log.warning("Could not resolve slug for node %s: %s", node_id, exc)
+
+    artifact_key = slug if slug else node_id
+
+    # Try to read artifact named after the slug (or node_id as fallback)
+    if run.artifact_run:
+        try:
+            from app.models.artifact import Artifact
+            import json as _json
+            art = Artifact.objects(run=run.artifact_run, name=artifact_key, artifact_type="json").first()
+            if art and art.json_data:
+                data = _json.loads(art.json_data)
+                title = data.get("title", title)
+                text = data.get("text", text)
+        except Exception as exc:
+            log.warning("Could not read approval artifact '%s': %s", artifact_key, exc)
+
+    return {"node_id": node_id, "slug": slug, "artifact_key": artifact_key, "title": title, "text": text}, 200
+
+
+@bp.post("/api/projects/<project_id>/workflow-runs/<run_id>/approve")
+@require_project_role("owner", "manager", "task_runner")
+def approve_workflow_run(project_id, run_id):
+    """Approve the pending question node — workflow continues."""
+    import datetime as _dt
+    from app.models.workflow_run import WorkflowRun
+    from app.tasks.run_workflow import advance_workflow
+
+    try:
+        run = WorkflowRun.objects.get(id=run_id, project=g.project)
+    except WorkflowRun.DoesNotExist:
+        raise HTTPError(404, "Workflow run not found")
+
+    if run.status != "waiting_approval" or not run.pending_approval_node_id:
+        raise HTTPError(400, "No pending approval for this run")
+
+    node_id = run.pending_approval_node_id
+    for nr in (run.node_runs or []):
+        if nr.node_id == node_id:
+            nr.status = "success"
+            nr.edges_fired = False  # advance_workflow will fire edges
+            break
+
+    run.status = "running"
+    run.pending_approval_node_id = ""
+    run.save()
+
+    advance_workflow.apply_async(args=[str(run.id)], countdown=1)
+    return {"message": "Approved"}, 200
+
+
+@bp.post("/api/projects/<project_id>/workflow-runs/<run_id>/reject")
+@require_project_role("owner", "manager", "task_runner")
+def reject_workflow_run(project_id, run_id):
+    """Reject the pending question node — workflow is stopped."""
+    import datetime as _dt
+    from app.models.workflow_run import WorkflowRun
+
+    try:
+        run = WorkflowRun.objects.get(id=run_id, project=g.project)
+    except WorkflowRun.DoesNotExist:
+        raise HTTPError(404, "Workflow run not found")
+
+    if run.status != "waiting_approval" or not run.pending_approval_node_id:
+        raise HTTPError(400, "No pending approval for this run")
+
+    node_id = run.pending_approval_node_id
+    for nr in (run.node_runs or []):
+        if nr.node_id == node_id:
+            nr.status = "stopped"
+            nr.edges_fired = True
+        elif nr.status == "pending":
+            nr.status = "skipped"
+            nr.edges_fired = True
+
+    run.status = "stopped"
+    run.pending_approval_node_id = ""
+    run.end = _dt.datetime.utcnow()
+    run.save()
+
+    try:
+        from app.services.notify_service import notify_workflow_result
+        notify_workflow_result(run)
+    except Exception as exc:
+        log.error("Workflow notification dispatch error: %s", exc)
+
+    return {"message": "Rejected"}, 200
+
+
 # ─────────────────────────────────────────────────────────────
 #  Internal helpers
 # ─────────────────────────────────────────────────────────────
@@ -361,8 +487,13 @@ def _build_nodes(node_dicts: list) -> list:
 
     nodes = []
     for nd in node_dicts:
+        node_type = nd.get("node_type", "task") or "task"
+        if node_type not in ("task", "question"):
+            node_type = "task"
         node = WorkflowNode(
             node_id=nd["node_id"],
+            node_type=node_type,
+            slug=nd.get("slug", "") or "",
             label=nd.get("label", ""),
             on_success=list(nd.get("on_success") or []),
             on_failure=list(nd.get("on_failure") or []),
@@ -371,7 +502,7 @@ def _build_nodes(node_dicts: list) -> list:
             position_y=float(nd.get("position_y") or 0.0),
         )
         template_id = nd.get("template_id")
-        if template_id:
+        if template_id and node_type == "task":
             try:
                 node.template = Template.objects.get(id=template_id)
             except Template.DoesNotExist:

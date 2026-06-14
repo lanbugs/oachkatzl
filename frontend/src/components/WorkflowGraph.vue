@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 export interface GraphNode {
   node_id: string
+  node_type?: string
   label: string
   template_name: string
   template_id?: string | null
@@ -152,23 +153,36 @@ function edgePath(e: Edge): string {
 const STATUS_FILL: Record<string, string> = {
   pending: '#f8fafc', running: '#eff6ff', success: '#f0fdf4',
   error: '#fef2f2', skipped: '#f8fafc', stopped: '#fff7ed',
+  waiting_approval: '#fffbeb',
 }
 const STATUS_STROKE: Record<string, string> = {
   pending: '#cbd5e1', running: '#3b82f6', success: '#22c55e',
   error: '#ef4444', skipped: '#e2e8f0', stopped: '#f97316',
+  waiting_approval: '#f59e0b',
 }
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pending', running: 'Running', success: 'Success',
   error: 'Error', skipped: 'Skipped', stopped: 'Stopped',
+  waiting_approval: 'Approval',
 }
 const STATUS_TEXT: Record<string, string> = {
   pending: '#94a3b8', running: '#3b82f6', success: '#16a34a',
   error: '#dc2626', skipped: '#94a3b8', stopped: '#ea580c',
+  waiting_approval: '#d97706',
 }
 
-function nodeFill(n: GraphNode)   { return n.status ? (STATUS_FILL[n.status]   ?? '#f8fafc') : '#ffffff' }
-function nodeStroke(n: GraphNode) { return n.status ? (STATUS_STROKE[n.status] ?? '#cbd5e1') : '#e2e8f0' }
-function nodeStrokeW(n: GraphNode) { return n.status === 'running' ? 2.5 : 1.5 }
+function isQuestion(n: GraphNode) { return n.node_type === 'question' }
+function nodeFill(n: GraphNode) {
+  if (isQuestion(n) && !n.status) return '#fffbeb'
+  return n.status ? (STATUS_FILL[n.status] ?? '#f8fafc') : '#ffffff'
+}
+function nodeStroke(n: GraphNode) {
+  if (isQuestion(n) && !n.status) return '#f59e0b'
+  return n.status ? (STATUS_STROKE[n.status] ?? '#cbd5e1') : '#e2e8f0'
+}
+function nodeStrokeW(n: GraphNode) {
+  return (n.status === 'running' || n.status === 'waiting_approval') ? 2.5 : 1.5
+}
 
 function displayName(n: GraphNode): string {
   const s = n.label || n.template_name || 'Unnamed'
@@ -258,24 +272,42 @@ function taskUrl(n: GraphNode): string | null {
           </text>
         </g>
 
+        <!-- Question node: amber question mark badge -->
+        <g v-if="isQuestion(n)">
+          <circle cx="20" cy="NH / 2" :cy="NH / 2" r="10"
+            fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" />
+          <text x="20" :y="NH / 2 + 4" text-anchor="middle"
+            font-size="12" font-weight="700" fill="#d97706"
+            font-family="system-ui,sans-serif">?</text>
+        </g>
+
         <!-- Node name (main) -->
         <text
-          :x="NW / 2" :y="n.status ? 40 : NH / 2 - 4"
+          :x="isQuestion(n) ? NW / 2 + 8 : NW / 2" :y="n.status ? 40 : NH / 2 - 4"
           text-anchor="middle" font-size="13" font-weight="600"
-          fill="#1e293b" font-family="system-ui,sans-serif">
+          :fill="isQuestion(n) ? '#92400e' : '#1e293b'"
+          font-family="system-ui,sans-serif">
           {{ displayName(n) }}
         </text>
 
-        <!-- Template name (sub, only if label differs) -->
-        <text v-if="displaySub(n)"
+        <!-- Sub-label for task nodes -->
+        <text v-if="!isQuestion(n) && displaySub(n)"
           :x="NW / 2" :y="n.status ? 55 : NH / 2 + 13"
           text-anchor="middle" font-size="10"
           fill="#94a3b8" font-family="system-ui,sans-serif">
           {{ displaySub(n) }}
         </text>
 
-        <!-- "no template" placeholder -->
-        <text v-else-if="!n.template_name && !n.label"
+        <!-- "Awaits approval" sub-label for question nodes -->
+        <text v-else-if="isQuestion(n)"
+          :x="NW / 2 + 8" :y="n.status ? 55 : NH / 2 + 13"
+          text-anchor="middle" font-size="10" font-style="italic"
+          fill="#d97706" font-family="system-ui,sans-serif">
+          Awaits approval
+        </text>
+
+        <!-- "no template" placeholder for task nodes -->
+        <text v-else-if="!isQuestion(n) && !n.template_name && !n.label"
           :x="NW / 2" :y="n.status ? 55 : NH / 2 + 13"
           text-anchor="middle" font-size="10" font-style="italic"
           fill="#cbd5e1" font-family="system-ui,sans-serif">
