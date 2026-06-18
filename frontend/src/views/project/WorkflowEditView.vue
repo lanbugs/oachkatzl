@@ -79,6 +79,7 @@ async function loadWorkflow() {
       slug: n.slug ?? '',
       label: n.label ?? '',
       template_id: n.template_id ?? null,
+      action_config: n.action_config ?? {},
       on_success: n.on_success ?? [],
       on_failure: n.on_failure ?? [],
       on_always: n.on_always ?? [],
@@ -127,9 +128,10 @@ async function save() {
     nodes: nodes.value.map(n => ({
       node_id: n.node_id,
       node_type: n.node_type ?? 'task',
-      slug: n.node_type === 'question' ? (n.slug || '') : '',
+      slug: (n.node_type === 'question' || n.node_type === 'remote_approval') ? (n.slug || '') : '',
       label: n.label,
-      template_id: n.node_type === 'question' ? null : (n.template_id || null),
+      template_id: (n.node_type === 'question' || n.node_type !== 'task') ? null : (n.template_id || null),
+      action_config: n.action_config ?? {},
       on_success: n.on_success,
       on_failure: n.on_failure,
       on_always: n.on_always,
@@ -248,6 +250,7 @@ const SURVEY_TYPES = ['string', 'int', 'enum', 'secret', 'bool', 'separator']
         <WorkflowEditorCanvas
           v-model:nodes="nodes"
           :templates="templates"
+          :project-id="projectId"
         />
       </div>
 

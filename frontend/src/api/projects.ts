@@ -60,6 +60,10 @@ export const projectsApi = {
 
   listBuilds: (pid: string, tid: string) => api.get(`/projects/${pid}/templates/${tid}/builds`),
 
+  listArtifactCaches: (pid: string) => api.get(`/projects/${pid}/artifact-caches`),
+  listArtifactRunArtifacts: (pid: string, cacheId: string, runId: string) =>
+    api.get(`/projects/${pid}/artifact-caches/${cacheId}/runs/${runId}/artifacts`),
+
   listCredentials: (pid: string) => api.get(`/projects/${pid}/credentials`),
   createCredential: (pid: string, data: object) => api.post(`/projects/${pid}/credentials`, data),
   updateCredential: (pid: string, cid: string, data: object) => api.put(`/projects/${pid}/credentials/${cid}`, data),

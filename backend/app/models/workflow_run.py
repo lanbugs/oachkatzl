@@ -28,6 +28,11 @@ class WorkflowNodeRun(EmbeddedDocument):
     task_id = StringField(default="")         # Task document id as string
     status = StringField(default="pending", choices=WORKFLOW_NODE_RUN_STATUSES)
     edges_fired = BooleanField(default=False)  # True after we have activated successor nodes
+    error_message = StringField(default="")   # set on failure for action nodes
+    # Remote approval decision (remote_approval node type only)
+    remote_decision = StringField(default="")      # "approved" | "rejected"
+    remote_decided_by = StringField(default="")    # email of the person who decided
+    remote_decided_at = DateTimeField(null=True)
 
 
 class WorkflowRun(Document):

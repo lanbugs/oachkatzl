@@ -96,7 +96,7 @@ async function deleteTemplate(id: string) {
         No templates yet.
         <RouterLink :to="`/projects/${projectId}/templates/new`" class="text-brand-600 hover:underline">Create one →</RouterLink>
       </div>
-      <div v-for="t in store.templates" :key="t.id" class="flex items-center justify-between px-5 py-4">
+      <div v-for="t in store.templates" :key="t.id" class="flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
         <div class="flex items-center gap-3 min-w-0">
           <div class="p-1.5 rounded bg-gray-100 shrink-0">
             <component :is="appIcons[t.app] || Puzzle" class="w-4 h-4 text-gray-500" />

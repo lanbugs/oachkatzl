@@ -49,6 +49,7 @@ def _node_out(node) -> dict:
         "label": node.label or "",
         "template_id": tmpl_id,
         "template_name": tmpl_name,
+        "action_config": dict(getattr(node, "action_config", None) or {}),
         "on_success": list(node.on_success or []),
         "on_failure": list(node.on_failure or []),
         "on_always": list(node.on_always or []),
@@ -105,17 +106,21 @@ def _node_run_out(nr, node_map: dict) -> dict:
             except Exception:
                 pass
     return {
-        "node_id":      nr.node_id,
-        "node_type":    node_type,
-        "task_id":      nr.task_id or "",
-        "status":       nr.status,
-        "edges_fired":  bool(nr.edges_fired),
+        "node_id":       nr.node_id,
+        "node_type":     node_type,
+        "task_id":       nr.task_id or "",
+        "status":        nr.status,
+        "edges_fired":   bool(nr.edges_fired),
+        "error_message": getattr(nr, "error_message", "") or "",
         "template_name": tmpl_name,
-        "template_id":  tmpl_id,
-        "label":        label,
-        "on_success":   on_success,
-        "on_failure":   on_failure,
-        "on_always":    on_always,
+        "template_id":   tmpl_id,
+        "label":              label,
+        "on_success":         on_success,
+        "on_failure":         on_failure,
+        "on_always":          on_always,
+        "remote_decision":    getattr(nr, "remote_decision", "") or "",
+        "remote_decided_by":  getattr(nr, "remote_decided_by", "") or "",
+        "remote_decided_at":  nr.remote_decided_at.isoformat() if getattr(nr, "remote_decided_at", None) else "",
     }
 
 
@@ -405,7 +410,40 @@ def get_approval_info(project_id, run_id):
         except Exception as exc:
             log.warning("Could not read approval artifact '%s': %s", artifact_key, exc)
 
-    return {"node_id": node_id, "slug": slug, "artifact_key": artifact_key, "title": title, "text": text}, 200
+    # Determine the node type so the frontend can distinguish question vs remote_approval
+    node_type = "question"
+    emails: list = []
+    try:
+        wf = run.workflow
+        if wf:
+            for n in (wf.nodes or []):
+                if n.node_id == node_id:
+                    node_type = getattr(n, "node_type", "question") or "question"
+                    emails = (n.action_config or {}).get("emails", [])
+                    break
+    except Exception:
+        pass
+
+    # For remote_approval, also include who decided (if available)
+    remote_decision = ""
+    remote_decided_by = ""
+    for nr in (run.node_runs or []):
+        if nr.node_id == node_id:
+            remote_decision = nr.remote_decision or ""
+            remote_decided_by = nr.remote_decided_by or ""
+            break
+
+    return {
+        "node_id": node_id,
+        "slug": slug,
+        "artifact_key": artifact_key,
+        "title": title,
+        "text": text,
+        "node_type": node_type,
+        "emails": emails,
+        "remote_decision": remote_decision,
+        "remote_decided_by": remote_decided_by,
+    }, 200
 
 
 @bp.post("/api/projects/<project_id>/workflow-runs/<run_id>/approve")
@@ -485,16 +523,19 @@ def _build_nodes(node_dicts: list) -> list:
     from app.models.workflow import WorkflowNode
     from app.models.template import Template
 
+    from app.schemas.workflow import ACTION_NODE_TYPES
+
     nodes = []
     for nd in node_dicts:
         node_type = nd.get("node_type", "task") or "task"
-        if node_type not in ("task", "question"):
+        if node_type not in {"task", "question", "remote_approval"} | ACTION_NODE_TYPES:
             node_type = "task"
         node = WorkflowNode(
             node_id=nd["node_id"],
             node_type=node_type,
             slug=nd.get("slug", "") or "",
             label=nd.get("label", ""),
+            action_config=nd.get("action_config") or {},
             on_success=list(nd.get("on_success") or []),
             on_failure=list(nd.get("on_failure") or []),
             on_always=list(nd.get("on_always") or []),

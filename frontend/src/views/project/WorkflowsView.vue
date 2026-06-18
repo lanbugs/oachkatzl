@@ -121,7 +121,7 @@ async function deleteWorkflow(wf: any) {
       <div
         v-for="wf in workflows"
         :key="wf.id"
-        class="flex items-center justify-between px-5 py-4"
+        class="flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
       >
         <div class="flex items-center gap-3 min-w-0">
           <div class="p-1.5 rounded bg-gray-100 shrink-0">

@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi } from '@/api/projects'
-import { StopCircle, Loader2, ArrowLeft, GitMerge, HelpCircle, CheckCircle, XCircle } from 'lucide-vue-next'
+import { StopCircle, Loader2, ArrowLeft, GitMerge, HelpCircle, CheckCircle, XCircle, MailCheck } from 'lucide-vue-next'
 import WorkflowGraph from '@/components/WorkflowGraph.vue'
 import type { GraphNode } from '@/components/WorkflowGraph.vue'
 import api from '@/api/client'
@@ -217,10 +217,10 @@ const graphNodes = computed<GraphNode[]>(() => {
         </div>
       </div>
 
-      <!-- Approval modal -->
+      <!-- Approval modal (question gate — in-app) -->
       <Teleport to="body">
         <div
-          v-if="run.status === 'waiting_approval' && approvalInfo"
+          v-if="run.status === 'waiting_approval' && approvalInfo && approvalInfo.node_type !== 'remote_approval'"
           class="fixed inset-0 z-50 flex items-center justify-center p-4"
         >
           <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" />
@@ -263,6 +263,32 @@ const graphNodes = computed<GraphNode[]>(() => {
         </div>
       </Teleport>
 
+      <!-- Remote approval info banner -->
+      <div
+        v-if="run.status === 'waiting_approval' && approvalInfo?.node_type === 'remote_approval'"
+        class="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4 flex items-start gap-3"
+      >
+        <div class="p-2 rounded-full bg-indigo-100 shrink-0 mt-0.5">
+          <MailCheck class="w-4 h-4 text-indigo-600" />
+        </div>
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-indigo-900">Waiting for remote approval</p>
+          <p class="text-xs text-indigo-600 mt-0.5">
+            Approval emails have been sent to
+            <span v-if="approvalInfo.emails?.length">
+              <strong>{{ approvalInfo.emails.join(', ') }}</strong>.
+            </span>
+            <span v-else>the configured recipients.</span>
+            The workflow will resume once one recipient approves or rejects.
+          </p>
+          <p v-if="approvalInfo.remote_decision" class="text-xs text-indigo-500 mt-1">
+            Decision already recorded:
+            <strong>{{ approvalInfo.remote_decision }}</strong>
+            by {{ approvalInfo.remote_decided_by }}.
+          </p>
+        </div>
+      </div>
+
       <!-- Graph -->
       <WorkflowGraph :nodes="graphNodes" :project-id="projectId" class="mb-6" />
 
@@ -280,6 +306,15 @@ const graphNodes = computed<GraphNode[]>(() => {
             <div class="min-w-0">
               <p class="text-sm font-medium text-gray-900 truncate">{{ nodeLabel(nr) }}</p>
               <p v-if="nr.template_name" class="text-xs text-gray-400 truncate">{{ nr.template_name }}</p>
+              <p v-if="nr.error_message" class="text-xs text-red-500 mt-0.5 break-all">{{ nr.error_message }}</p>
+              <p v-if="nr.remote_decision" class="text-xs mt-0.5"
+                :class="nr.remote_decision === 'approved' ? 'text-emerald-600' : 'text-red-500'">
+                {{ nr.remote_decision === 'approved' ? '✓ Approved' : '✗ Rejected' }}
+                by {{ nr.remote_decided_by }}
+                <span v-if="nr.remote_decided_at" class="text-gray-400">
+                  · {{ new Date(nr.remote_decided_at).toLocaleString() }}
+                </span>
+              </p>
             </div>
           </div>
           <RouterLink v-if="nr.task_id" :to="`/projects/${projectId}/tasks/${nr.task_id}`"

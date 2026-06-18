@@ -11,6 +11,12 @@ from app.celery_app import celery
 # Statuses that indicate a node/run has finished (no further state changes expected)
 TERMINAL: frozenset[str] = frozenset({"success", "error", "stopped", "skipped"})
 
+ACTION_NODE_TYPES: frozenset[str] = frozenset(
+    {"list_generator", "pdf_generator", "send_mail", "transfer_file"}
+)
+
+CONTROL_NODE_TYPES: frozenset[str] = frozenset({"question", "remote_approval"})
+
 
 def _ensure_mongo() -> None:
     """Connect to MongoDB if not already connected."""
@@ -191,6 +197,150 @@ def _start_node_task(node, run, survey_dict: dict, artifact_run=None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Action node executor
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_approval_content(node, run) -> tuple[str, str]:
+    """Return (title, text) from artifact for approval nodes."""
+    slug = getattr(node, "slug", "") or (node.action_config or {}).get("slug", "")
+    log.debug("_get_approval_content: slug=%r artifact_run=%r", slug, run.artifact_run)
+    if not slug:
+        log.warning("_get_approval_content: slug is empty — returning default")
+        return "Proceed?", ""
+    if not run.artifact_run:
+        log.warning("_get_approval_content: run.artifact_run is None — returning default")
+        return "Proceed?", ""
+    try:
+        from app.models.artifact import Artifact
+        art = Artifact.objects(
+            run=run.artifact_run,
+            name=slug,
+            artifact_type="json",
+        ).order_by("-created_at").first()
+        log.debug("_get_approval_content: artifact lookup name=%r → %s", slug, art)
+        if art and art.json_data:
+            import json as _json
+            d = _json.loads(art.json_data)
+            return d.get("title", "Proceed?"), d.get("text", "")
+        log.warning("_get_approval_content: artifact '%s' not found or empty json_data", slug)
+    except Exception as exc:
+        log.warning("_get_approval_content: exception: %s", exc)
+    return "Proceed?", ""
+
+
+def _send_remote_approval_emails(node, run) -> None:
+    """Generate tokens for each configured email and send approval emails."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    from app.config import settings
+    from app.models.remote_approval import RemoteApprovalToken
+    from app.models.option import Option
+
+    emails: list[str] = (node.action_config or {}).get("emails", [])
+    if not emails:
+        log.warning("remote_approval node %s has no emails configured", node.node_id)
+        return
+
+    def _opt(key, default=""):
+        try:
+            o = Option.objects(key=key).first()
+            return o.value if o else default
+        except Exception:
+            return default
+
+    smtp_host = _opt("SMTP_HOST")
+    if not smtp_host:
+        log.warning("remote_approval: SMTP_HOST not set — skipping email")
+        return
+
+    smtp_port = int(_opt("SMTP_PORT", "587"))
+    smtp_user = _opt("SMTP_USER")
+    smtp_pass = _opt("SMTP_PASSWORD")
+    smtp_from = _opt("SMTP_FROM") or smtp_user or "oachkatzl@localhost"
+    use_tls = _opt("SMTP_TLS", "true").lower() != "false"
+
+    title, text = _get_approval_content(node, run)
+    base_url = settings.BASE_URL.rstrip("/")
+
+    wf_name = ""
+    try:
+        wf_name = run.workflow.name if run.workflow else ""
+    except Exception:
+        pass
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as smtp:
+            if use_tls:
+                smtp.starttls()
+            if smtp_user:
+                smtp.login(smtp_user, smtp_pass)
+
+            for email in emails:
+                rat = RemoteApprovalToken.generate(
+                    workflow_run_id=str(run.id),
+                    node_id=node.node_id,
+                    email=email,
+                )
+                approve_url = f"{base_url}/api/remote-approval/{rat.token}/approve"
+                reject_url = f"{base_url}/api/remote-approval/{rat.token}/reject"
+
+                plain = (
+                    f"{title}\n\n"
+                    f"{text}\n\n"
+                    f"Approve: {approve_url}\n"
+                    f"Reject:  {reject_url}\n\n"
+                    f"Workflow: {wf_name}\n"
+                    f"Once a decision is made, all other links become inactive."
+                )
+                html = f"""<html><body style="font-family:system-ui,sans-serif;color:#0f172a;max-width:560px;margin:auto;padding:2rem">
+<h2 style="margin-bottom:.5rem">&#10067; {title}</h2>
+{"<p style='color:#475569;margin-bottom:1.5rem;white-space:pre-wrap'>" + text + "</p>" if text else ""}
+<div style="display:flex;gap:1rem;margin:1.5rem 0">
+  <a href="{approve_url}" style="background:#16a34a;color:#fff;padding:.7rem 1.5rem;border-radius:.5rem;text-decoration:none;font-weight:600">&#10003; Approve</a>
+  <a href="{reject_url}" style="background:#dc2626;color:#fff;padding:.7rem 1.5rem;border-radius:.5rem;text-decoration:none;font-weight:600">&#10007; Reject</a>
+</div>
+<p style="color:#94a3b8;font-size:.8rem">Workflow: {wf_name} &mdash; Once a decision is made, all other links become inactive.</p>
+</body></html>"""
+
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = f"[Approval Required] {title}"
+                msg["From"] = smtp_from
+                msg["To"] = email
+                msg.attach(MIMEText(plain, "plain"))
+                msg.attach(MIMEText(html, "html"))
+                smtp.send_message(msg)
+                log.info("Remote approval email sent to %s for run %s", email, run.id)
+    except Exception as exc:
+        log.error("Failed to send remote approval emails: %s", exc, exc_info=True)
+
+
+def _execute_action_node(node, run) -> None:
+    """Dispatch to the appropriate action_nodes handler."""
+    from app.tasks.action_nodes import (
+        execute_list_generator,
+        execute_pdf_generator,
+        execute_send_mail,
+        execute_transfer_file,
+    )
+
+    cfg = dict(getattr(node, "action_config", None) or {})
+    nt = node.node_type
+
+    if nt == "list_generator":
+        execute_list_generator(cfg, run)
+    elif nt == "pdf_generator":
+        execute_pdf_generator(cfg, run)
+    elif nt == "send_mail":
+        execute_send_mail(cfg, run)
+    elif nt == "transfer_file":
+        execute_transfer_file(cfg, run, node)
+    else:
+        raise ValueError(f"Unknown action node type: {nt}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Celery tasks
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -353,12 +503,40 @@ def advance_workflow(self, workflow_run_id: str) -> None:
 
                 if decision == "start":
                     log.debug("Workflow %s: starting node %s", workflow_run_id, nr.node_id)
-                    if node and getattr(node, "node_type", "task") == "question":
+                    node_type = getattr(node, "node_type", "task") if node else "task"
+                    if node and node_type == "question":
                         # Pause for user approval — advance_workflow will not be rescheduled
                         log.info("Workflow %s: question node %s reached, pausing for approval",
                                  workflow_run_id, nr.node_id)
                         nr.status = "waiting_approval"
                         changed = True
+                    elif node and node_type == "remote_approval":
+                        log.info("Workflow %s: remote_approval node %s reached, sending emails",
+                                 workflow_run_id, nr.node_id)
+                        nr.status = "waiting_approval"
+                        changed = True
+                        # Save state before sending emails so tokens can reference the run
+                        run.node_runs = list(nr_map.values())
+                        run.pending_approval_node_id = nr.node_id
+                        run.status = "waiting_approval"
+                        run.save()
+                        _send_remote_approval_emails(node, run)
+                        return  # token endpoint will call advance_workflow when decided
+                    elif node and node_type in ACTION_NODE_TYPES:
+                        nr.status = "running"
+                        changed = True
+                        # Save running state before executing so it's visible in the UI
+                        run.node_runs = list(nr_map.values())
+                        run.save()
+                        try:
+                            _execute_action_node(node, run)
+                            nr.status = "success"
+                            nr.error_message = ""
+                        except Exception as exc:
+                            log.error("Action node %s failed: %s", nr.node_id, exc, exc_info=True)
+                            nr.status = "error"
+                            nr.error_message = str(exc)
+                        nr.edges_fired = True
                     elif node:
                         wf_artifact_run = run.artifact_run if run.artifact_run else None
                         task = _start_node_task(node, run, survey_dict, artifact_run=wf_artifact_run)

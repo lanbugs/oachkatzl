@@ -1,8 +1,11 @@
-from apiflask.fields import Boolean, Float, List, Nested, String
+from apiflask.fields import Boolean, Dict, Float, List, Nested, String
 from apiflask.schemas import Schema
 from marshmallow import validate
 
 from app.schemas.template import SurveyVarIn, SurveyVarOut
+
+
+ACTION_NODE_TYPES = {"list_generator", "pdf_generator", "send_mail", "transfer_file"}
 
 
 class WorkflowNodeIn(Schema):
@@ -11,6 +14,7 @@ class WorkflowNodeIn(Schema):
     slug = String(load_default="")
     label = String(load_default="")
     template_id = String(load_default=None)
+    action_config = Dict(load_default={})
     on_success = List(String(), load_default=[])
     on_failure = List(String(), load_default=[])
     on_always = List(String(), load_default=[])
@@ -25,6 +29,7 @@ class WorkflowNodeOut(Schema):
     label = String()
     template_id = String(dump_default=None)
     template_name = String(dump_default="")
+    action_config = Dict(dump_default={})
     on_success = List(String())
     on_failure = List(String())
     on_always = List(String())

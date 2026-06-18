@@ -26,4 +26,5 @@ def init_extensions(app):
         engineio_logger=False,
     )
 
+    app.config["RATELIMIT_STORAGE_URI"] = settings.REDIS_URL
     limiter.init_app(app)

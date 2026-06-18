@@ -22,8 +22,12 @@ _SAFE_INHERIT = {"PATH", "HOME", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE",
                  "USER", "LOGNAME", "SHELL", "TERM", "TMPDIR", "TMP", "TEMP",
                  # SSH agent forwarding
                  "SSH_AUTH_SOCK", "SSH_AGENT_PID",
-                 # Ansible
-                 "ANSIBLE_FORCE_COLOR", "ANSIBLE_STDOUT_CALLBACK"}
+                 # Ansible — include system-level collection/role paths so that
+                 # globally installed content (e.g. from the worker image) remains
+                 # accessible after we prepend the task-local .galaxy paths.
+                 "ANSIBLE_FORCE_COLOR", "ANSIBLE_STDOUT_CALLBACK",
+                 "ANSIBLE_ROLES_PATH",
+                 "ANSIBLE_COLLECTIONS_PATH", "ANSIBLE_COLLECTIONS_PATHS"}
 
 
 def build_env(task, workdir: str) -> tuple[dict, list[str]]:

@@ -3,7 +3,9 @@ import { ref } from 'vue'
 
 const sections = [
   { id: 'overview',       label: 'Overview' },
+  { id: 'dashboard',      label: 'Dashboard' },
   { id: 'projects',       label: 'Projects & Roles' },
+  { id: 'members',        label: 'Project Members' },
   { id: 'keys',           label: 'Access Keys' },
   { id: 'custom-creds',   label: 'Custom Credentials' },
   { id: 'repositories',   label: 'Repositories' },
@@ -14,15 +16,21 @@ const sections = [
   { id: 'survey',         label: 'Survey Variables' },
   { id: 'tasks',          label: 'Running Tasks' },
   { id: 'workflows',      label: 'Workflows' },
-  { id: 'approval-gate', label: 'Approval Gates' },
+  { id: 'approval-gate',        label: 'Approval Gates' },
+  { id: 'remote-approval-gate', label: 'Remote Approval' },
+  { id: 'action-nodes',         label: 'Action Nodes' },
   { id: 'artifacts',      label: 'Artifact Cache' },
   { id: 'pip-proxy',      label: 'pip Package Proxy' },
   { id: 'scaling',        label: 'Scaling Workers' },
   { id: 'custom-workers', label: 'Custom Workers' },
+  { id: 'custom-apps',   label: 'Custom Apps' },
   { id: 'schedules',      label: 'Schedules' },
   { id: 'tokens',         label: 'Execute Tokens' },
   { id: 'notifications',  label: 'Notifications' },
   { id: '2fa',            label: '2FA & Security' },
+  { id: 'profile',        label: 'Profile' },
+  { id: 'admin-users',    label: 'Admin: Users' },
+  { id: 'admin-settings', label: 'Admin: Settings' },
   { id: 'about',          label: 'About' },
 ]
 
@@ -83,6 +91,34 @@ function scrollTo(id: string) {
         </div>
       </section>
 
+      <!-- ── Dashboard ── -->
+      <section id="dashboard">
+        <h2 class="help-h2">Dashboard</h2>
+        <div class="prose-box">
+          <p>The dashboard is the first screen after login. It gives a live overview of task activity and worker health across all your projects.</p>
+
+          <h3>Task chart — last 7 days</h3>
+          <p>A line chart shows the number of <strong>successful</strong> (green) and <strong>failed</strong> (red) tasks per day for the past seven days. Hover over a data point to see the exact counts. The totals for the period are shown below the chart.</p>
+
+          <h3>Worker status</h3>
+          <p>Each active <a @click.prevent="scrollTo('custom-workers')" href="#" class="text-brand-600 hover:underline">Worker Pool</a> is shown as a card with:</p>
+          <table class="help-table">
+            <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>Workers online</td><td>Number of Celery worker processes currently connected to the broker.</td></tr>
+              <tr><td>Workers busy</td><td>Workers currently executing at least one task.</td></tr>
+              <tr><td>Active tasks</td><td>Total number of tasks running right now across all workers in this pool.</td></tr>
+              <tr><td>Capacity</td><td>Total available task slots (sum of each worker's concurrency setting).</td></tr>
+            </tbody>
+          </table>
+          <p>The worker status refreshes automatically every 15 seconds. A pool card turns amber when all capacity is used.</p>
+
+          <div class="callout info">
+            The default worker pool (<em>celery</em>) is always shown. Custom pools appear only when at least one worker for that pool is online.
+          </div>
+        </div>
+      </section>
+
       <!-- ── Projects & Roles ── -->
       <section id="projects">
         <h2 class="help-h2">Projects &amp; Roles</h2>
@@ -98,6 +134,34 @@ function scrollTo(id: string) {
           </table>
 
           <p>Global <strong>admins</strong> have owner-level access to every project regardless of membership.</p>
+        </div>
+      </section>
+
+      <!-- ── Project Members ── -->
+      <section id="members">
+        <h2 class="help-h2">Project Members</h2>
+        <div class="prose-box">
+          <p>Members are managed under <strong>Project → Members</strong> in the sidebar. Only users with the <code>owner</code> or <code>manager</code> role (or a global admin) can add or remove members.</p>
+
+          <h3>Adding a member</h3>
+          <ol>
+            <li>Click <strong>Add member</strong> in the top-right corner.</li>
+            <li>Select a user from the dropdown — only users who are not already members are shown.</li>
+            <li>Select a role (see <a @click.prevent="scrollTo('projects')" href="#" class="text-brand-600 hover:underline">Projects &amp; Roles</a> for role descriptions).</li>
+            <li>Click <strong>Add member</strong>.</li>
+          </ol>
+
+          <h3>Changing a member's role</h3>
+          <p>Use the role dropdown next to the member's name. The change takes effect immediately. An owner cannot demote themselves — another owner must do it.</p>
+
+          <h3>Removing a member</h3>
+          <p>Click the trash icon on the member row. The user immediately loses access to the project and all its resources.</p>
+
+          <h3>LDAP-managed members</h3>
+          <p>
+            When <a @click.prevent="scrollTo('admin-settings')" href="#" class="text-brand-600 hover:underline">LDAP/AD</a> is enabled and group-to-project mappings are configured, users whose role comes from an LDAP group are marked with a purple <span class="badge blue" style="font-size:10px">LDAP</span> badge.
+            Their role is determined by the LDAP group mapping and is re-synced on every login. Manual role changes for LDAP-managed members are overwritten on the user's next login.
+          </p>
         </div>
       </section>
 
@@ -783,6 +847,316 @@ resp.raise_for_status()</pre>
         </div>
       </section>
 
+      <!-- ── Remote Approval Gate ── -->
+      <section id="remote-approval-gate">
+        <h2 class="help-h2">Remote Approval Gate</h2>
+        <div class="prose-box">
+          <p>
+            A <strong>Remote Approval Gate</strong> is a workflow node that pauses execution and sends approval emails to a configurable list of recipients.
+            Each recipient receives a personal email with two unique links — one to approve, one to reject — that work <strong>without logging in</strong>.
+            Once one person makes a decision, all other links are automatically invalidated.
+          </p>
+
+          <div class="callout info">
+            This differs from the regular <a @click.prevent="scrollTo('approval-gate')" href="#" class="text-brand-600 hover:underline">Approval Gate</a> in one key way:
+            the in-app modal does not appear. The decision is made entirely via email, making it suitable for approvers who do not have an Oachkatzl account.
+          </div>
+
+          <h3>Adding a Remote Approval Gate</h3>
+          <ol>
+            <li>Open the workflow editor and hover over any node.</li>
+            <li>Click a condition button (✓ / ✗ / →) to open the <em>Add node</em> dialog.</li>
+            <li>Select <strong>Remote Approval</strong> (indigo button).</li>
+            <li>Click <em>Add node</em>. The configuration dialog opens immediately.</li>
+            <li>Optionally enter an <strong>Artifact slug</strong> (the name of a JSON artifact uploaded by the preceding task — provides title and text for the email).</li>
+            <li>Add one or more <strong>recipient email addresses</strong>.</li>
+            <li>Click <em>Save</em>. The node appears as an indigo card with a ✉ icon.</li>
+          </ol>
+
+          <h3>What happens when the node is reached</h3>
+          <ol>
+            <li>The workflow run switches to <strong>Awaiting Approval</strong> status.</li>
+            <li>Each recipient receives an email with the approval title and text (from the artifact if configured) and two buttons: <strong>Approve</strong> and <strong>Reject</strong>.</li>
+            <li>The workflow run view shows an info banner — no in-app modal appears.</li>
+            <li>When a recipient clicks <em>Approve</em> or <em>Reject</em>, they are shown a confirmation page. The decision is recorded in the workflow run log.</li>
+            <li>All other recipient links immediately become inactive. If clicked, they see a page stating who already decided and when.</li>
+          </ol>
+
+          <h3>Email content</h3>
+          <p>The approval email is structured as follows:</p>
+          <ul>
+            <li><strong>Subject:</strong> <code>[Approval Required] &lt;title&gt;</code></li>
+            <li><strong>Body:</strong> The artifact title and text, followed by an Approve button and a Reject button.</li>
+            <li><strong>From:</strong> Configured <code>SMTP_FROM</code> address.</li>
+          </ul>
+          <p>The title and text come from a JSON artifact uploaded by the preceding task. The artifact name must match the node's <strong>Artifact slug</strong>:</p>
+          <pre v-pre class="code-block">curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "deploy-approval", "data": {"title": "Deploy to production?", "text": "Version 2.4.1 — staging tests passed."}}'</pre>
+
+          <h3>Approval links</h3>
+          <p>Each link is a <code>GET</code> request to a public endpoint — no session or cookie is required:</p>
+          <pre v-pre class="code-block">GET /api/remote-approval/&lt;token&gt;/approve
+GET /api/remote-approval/&lt;token&gt;/reject
+GET /api/remote-approval/&lt;token&gt;/status   ← shows current state with buttons if still pending</pre>
+          <p>
+            Each recipient gets their own unique token. Tokens are 256-bit URL-safe random strings and are single-use.
+            The <code>/status</code> URL can be used to check the decision state and still act if no decision has been made yet.
+          </p>
+
+          <h3>Outcomes</h3>
+          <table class="help-table">
+            <thead><tr><th>Decision</th><th>Node status</th><th>What happens</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Approve</strong></td>
+                <td><span class="badge green">success</span></td>
+                <td>Workflow resumes. Downstream <em>On Success</em> / <em>Always</em> edges fire.</td>
+              </tr>
+              <tr>
+                <td><strong>Reject</strong></td>
+                <td><span class="badge orange">stopped</span></td>
+                <td>Workflow stops immediately. All pending nodes are skipped. A workflow completion notification is sent.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Audit log</h3>
+          <p>
+            Every decision is logged in the project's activity log with the email address of the person who decided and the timestamp.
+            The decision is also visible on the workflow run node list.
+          </p>
+
+          <h3>Requirements</h3>
+          <ul>
+            <li>SMTP must be configured under <strong>Admin → Settings</strong>.</li>
+            <li>The workflow must have a reachable <code>OACHKATZL_BASE_URL</code> (set in the environment) so the approval links resolve from outside the Docker network.</li>
+            <li>An <a @click.prevent="scrollTo('artifacts')" href="#" class="text-brand-600 hover:underline">Artifact Cache</a> must be attached to the workflow if you want to provide a custom title/text via artifact.</li>
+          </ul>
+
+          <div class="callout warning">
+            The approve / reject links work <strong>without authentication</strong>. Treat them like passwords — anyone who receives the email (or a forwarded copy of it) can make the decision. Do not use this feature for high-security decisions where non-repudiation is required.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Action Nodes ── -->
+      <section id="action-nodes">
+        <h2 class="help-h2">Action Nodes</h2>
+        <div class="prose-box">
+          <p>
+            <strong>Action Nodes</strong> are special workflow nodes that perform built-in operations
+            on <a @click.prevent="scrollTo('artifacts')" href="#" class="text-brand-600 hover:underline">Artifact Cache</a> data —
+            without running a script or playbook. They are added the same way as task nodes: hover over any
+            node on the canvas, click a condition button (✓ / ✗ / →), then choose <em>Action Node</em> in the
+            <em>Add node</em> dialog.
+          </p>
+
+          <div class="callout info">
+            <strong>Source artifact:</strong> All action nodes consume an artifact produced by an earlier node.
+            The <strong>Source artifact tag</strong> is set once in the <em>Add node</em> dialog and identifies
+            the artifact by name. The workflow must have an <strong>Artifact Cache</strong> configured for action
+            nodes to read from.
+          </div>
+
+          <h3>Available action node types</h3>
+          <table class="help-table">
+            <thead><tr><th>Type</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>List Generator</strong></td><td>Converts a JSON array artifact to a downloadable XLSX or CSV file and stores it back in the artifact cache.</td></tr>
+              <tr><td><strong>PDF Generator</strong></td><td>Renders a Markdown or HTML artifact as a PDF and stores the result in the artifact cache.</td></tr>
+              <tr><td><strong>Send Mail</strong></td><td>Sends an email, optionally attaching an artifact file.</td></tr>
+              <tr><td><strong>Transfer File</strong></td><td>Uploads an artifact file to a remote server via SFTP or SMB.</td></tr>
+            </tbody>
+          </table>
+
+          <!-- List Generator -->
+          <h3>List Generator</h3>
+          <p>
+            Reads a <strong>JSON array</strong> artifact (a list of objects) and converts it to an
+            <strong>XLSX</strong> or <strong>CSV</strong> file. The generated file is uploaded back to
+            the artifact cache under the configured output filename and is immediately downloadable from the UI.
+          </p>
+          <p>
+            The source artifact must be a JSON artifact whose top-level value is an array of objects.
+            The object keys become column headers in the spreadsheet.
+          </p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Source artifact tag</td><td>yes</td><td>Name of the JSON array artifact to convert. Set in the <em>Add node</em> dialog.</td></tr>
+              <tr><td>Output format</td><td>yes</td><td><code>XLSX</code> (default) or <code>CSV</code>.</td></tr>
+              <tr><td>Output filename</td><td>no</td><td>Name for the generated file (e.g. <code>report.xlsx</code>). Defaults to <code>output.xlsx</code> / <code>output.csv</code>.</td></tr>
+            </tbody>
+          </table>
+
+          <p>Example — uploading a list artifact from Bash for the List Generator to process:</p>
+          <pre v-pre class="code-block">#!/bin/bash
+PAYLOAD=$(jq -n '[
+  {"host":"web-01","status":"ok","changed":3},
+  {"host":"web-02","status":"ok","changed":1},
+  {"host":"db-01","status":"failed","changed":0}
+]')
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"host-results\", \"data\": $PAYLOAD}"</pre>
+          <p>Set <em>Source artifact tag</em> to <code>host-results</code> on the List Generator node. The node produces <code>report.xlsx</code> in the cache.</p>
+
+          <!-- PDF Generator -->
+          <h3>PDF Generator</h3>
+          <p>
+            Reads a <strong>Markdown</strong> (<code>.md</code>) or <strong>HTML</strong> artifact,
+            renders it as a PDF (A4 portrait, 2 cm margins), and stores the result in the artifact cache.
+            Markdown is converted to HTML before rendering. Jinja2 templating is applied if a
+            <code>data</code> JSON artifact with the same run token is present.
+          </p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Source artifact tag</td><td>yes</td><td>Name of the Markdown or HTML artifact to render. Set in the <em>Add node</em> dialog.</td></tr>
+              <tr><td>Output filename</td><td>no</td><td>Name for the generated PDF (e.g. <code>report.pdf</code>). Defaults to <code>output.pdf</code>.</td></tr>
+            </tbody>
+          </table>
+
+          <p>Example — uploading a Markdown template from Python:</p>
+          <pre v-pre class="code-block">import os, requests
+
+token = os.environ["OACHKATZL_ARTIFACT_TOKEN"]
+url   = os.environ["OACHKATZL_ARTIFACT_URL"]
+
+md = """# Deployment Report
+
+| Host   | Status |
+|--------|--------|
+| web-01 | OK     |
+| web-02 | OK     |
+"""
+
+# Upload as a file with a .md extension
+headers = {"X-Artifact-Token": token}
+resp = requests.post(url, headers=headers,
+                     files={"file": ("report.md", md.encode(), "text/markdown")},
+                     data={"name": "report.md"})
+resp.raise_for_status()</pre>
+          <p>Set <em>Source artifact tag</em> to <code>report.md</code> on the PDF Generator node.</p>
+
+          <!-- Send Mail -->
+          <h3>Send Mail</h3>
+          <p>
+            Sends an email via the configured SMTP server (see
+            <a @click.prevent="scrollTo('notifications')" href="#" class="text-brand-600 hover:underline">Notifications → SMTP configuration</a>).
+            An artifact file can optionally be attached to the email.
+          </p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Attachment artifact tag</td><td>no</td><td>Name of the artifact to attach. Set in the <em>Add node</em> dialog. Leave blank for no attachment.</td></tr>
+              <tr><td>To</td><td>yes</td><td>One or more recipient email addresses.</td></tr>
+              <tr><td>Subject</td><td>yes</td><td>Email subject line.</td></tr>
+              <tr><td>Body</td><td>no</td><td>Plain-text email body.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout info">
+            SMTP must be configured under <strong>Settings</strong> before Send Mail nodes can deliver email.
+            A test SMTP server (Mailpit) is included in the Docker Compose setup and reachable at <code>http://localhost:8026</code>.
+          </div>
+
+          <!-- Transfer File -->
+          <h3>Transfer File</h3>
+          <p>
+            Uploads an artifact file to a remote server using <strong>SFTP</strong> or <strong>SMB</strong>.
+            The remote path supports dynamic tokens that are resolved at run time.
+          </p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Source artifact tag</td><td>yes</td><td>Name of the artifact file to upload. Set in the <em>Add node</em> dialog.</td></tr>
+              <tr><td>Protocol</td><td>yes</td><td><code>SFTP</code> (default) or <code>SMB</code>.</td></tr>
+              <tr><td>Credential</td><td>yes</td><td>A Custom Credential that supplies the connection details (host, username, password / key).</td></tr>
+              <tr><td>Remote path</td><td>yes</td><td>Destination path on the remote server. Supports path tokens (see below).</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Remote path tokens</h3>
+          <p>Click any token chip in the Remote Path field to insert it. Tokens are resolved at run time:</p>
+          <table class="help-table">
+            <thead><tr><th>Token</th><th>Resolves to</th></tr></thead>
+            <tbody>
+              <tr><td><code>{date}</code></td><td><code>YYYY-MM-DD</code></td></tr>
+              <tr><td><code>{datetime}</code></td><td><code>YYYY-MM-DDTHH-MM-SS</code></td></tr>
+              <tr><td><code>{year}</code></td><td>4-digit year</td></tr>
+              <tr><td><code>{month}</code></td><td>2-digit month</td></tr>
+              <tr><td><code>{day}</code></td><td>2-digit day</td></tr>
+              <tr><td><code>{workflow_run_id}</code></td><td>MongoDB ObjectId of the workflow run</td></tr>
+              <tr><td><code>{workflow_name}</code></td><td>Name of the workflow</td></tr>
+              <tr><td><code>{node_name}</code></td><td>Label of this action node</td></tr>
+            </tbody>
+          </table>
+
+          <p>Example path: <code>/reports/{year}/{month}/report-{date}.xlsx</code> → <code>/reports/2026/06/report-2026-06-18.xlsx</code></p>
+
+          <h3>Setting up the Credential Type for Transfer File</h3>
+          <p>
+            The Transfer File node uses a <a @click.prevent="scrollTo('custom-creds')" href="#" class="text-brand-600 hover:underline">Custom Credential</a>
+            to supply connection details. You must create the Credential Type once (admin only) and then create Credentials for each target server.
+          </p>
+
+          <h4 style="font-size:.85rem;font-weight:600;color:#374151;margin-top:.75rem">SFTP Credential Type</h4>
+          <p><strong>Inputs schema:</strong></p>
+          <pre v-pre class="code-block">[
+  { "id": "host",     "label": "Host",     "type": "string",  "required": true  },
+  { "id": "port",     "label": "Port",     "type": "string",  "required": false, "default": "22" },
+  { "id": "username", "label": "Username", "type": "string",  "required": true  },
+  { "id": "password", "label": "Password", "type": "secret",  "required": false },
+  { "id": "key",      "label": "SSH Private Key", "type": "secret", "required": false,
+    "help_text": "PEM-encoded private key. Leave blank to use password auth." }
+]</pre>
+          <p><strong>Injectors schema:</strong></p>
+          <pre v-pre class="code-block">{
+  "env": {
+    "SFTP_HOST":     "{{ host }}",
+    "SFTP_PORT":     "{{ port }}",
+    "SFTP_USERNAME": "{{ username }}",
+    "SFTP_PASSWORD": "{{ password }}",
+    "SFTP_KEY":      "{{ key }}"
+  }
+}</pre>
+
+          <h4 style="font-size:.85rem;font-weight:600;color:#374151;margin-top:.75rem">SMB Credential Type</h4>
+          <p><strong>Inputs schema:</strong></p>
+          <pre v-pre class="code-block">[
+  { "id": "host",     "label": "Host / Server",  "type": "string", "required": true  },
+  { "id": "share",    "label": "Share Name",      "type": "string", "required": true  },
+  { "id": "username", "label": "Username",        "type": "string", "required": true  },
+  { "id": "password", "label": "Password",        "type": "secret", "required": true  },
+  { "id": "domain",   "label": "Domain (optional)", "type": "string", "required": false }
+]</pre>
+          <p><strong>Injectors schema:</strong></p>
+          <pre v-pre class="code-block">{
+  "env": {
+    "SMB_HOST":     "{{ host }}",
+    "SMB_SHARE":    "{{ share }}",
+    "SMB_USERNAME": "{{ username }}",
+    "SMB_PASSWORD": "{{ password }}",
+    "SMB_DOMAIN":   "{{ domain }}"
+  }
+}</pre>
+
+          <div class="callout info">
+            After creating the Credential Type under <strong>Settings → Credential Types</strong>, create a Credential
+            of that type in your project under <strong>Keys &amp; Credentials → Credentials</strong>.
+            The Transfer File node's <em>Credential</em> picker lists all project credentials — select the one that matches the target server.
+          </div>
+        </div>
+      </section>
+
       <!-- ── Artifact Cache ── -->
       <section id="artifacts">
         <h2 class="help-h2">Artifact Cache</h2>
@@ -1307,6 +1681,160 @@ docker compose exec worker-gpu celery -A worker.celery inspect active_queues</pr
         </div>
       </section>
 
+      <!-- ── Custom Apps ── -->
+      <section id="custom-apps">
+        <h2 class="help-h2">Custom Apps</h2>
+        <div class="prose-box">
+          <p>
+            <strong>Custom Apps</strong> extend the built-in app types (<em>Ansible</em>, <em>Bash</em>, <em>Python</em>)
+            with any executable available in the worker image — Terraform, kubectl, make, a custom binary, or anything
+            else reachable in the worker's <code>PATH</code>. Once registered, a Custom App appears as an additional
+            app type in the template editor, just like the built-in types.
+          </p>
+
+          <div class="callout info">
+            Creating and editing Custom Apps is restricted to <strong>global admins</strong>.
+            Project members can use an active app in templates but cannot modify its definition.
+          </div>
+
+          <h3>Creating a Custom App</h3>
+          <p>Go to <strong>Settings → Custom Apps</strong> in the sidebar and click <em>New app</em>.</p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>slug</code></td><td>yes</td>
+                <td>
+                  Unique identifier — lowercase letters, digits, <code>-</code> and <code>_</code>.
+                  This becomes the <code>app</code> value stored on templates. Immutable after creation.
+                  Example: <code>terraform</code>, <code>kubectl</code>, <code>make</code>.
+                </td>
+              </tr>
+              <tr>
+                <td>Title</td><td>yes</td>
+                <td>Human-readable name shown in the app-type dropdown in the template editor.</td>
+              </tr>
+              <tr>
+                <td>Executable</td><td>yes</td>
+                <td>
+                  Binary name (looked up in <code>PATH</code>) or absolute path on the worker.
+                  Examples: <code>terraform</code>, <code>/usr/local/bin/kubectl</code>.
+                </td>
+              </tr>
+              <tr>
+                <td>Default arguments</td><td>no</td>
+                <td>
+                  JSON array of arguments <em>always</em> prepended to every invocation — before
+                  the script file and template arguments.
+                  Example: <code>["--no-color"]</code> for Terraform.
+                </td>
+              </tr>
+              <tr>
+                <td>Args template</td><td>no</td>
+                <td>
+                  Controls how the command line is assembled. Two placeholders are available:
+                  <code>{file}</code> (the script/playbook path from the template) and
+                  <code>{arguments}</code> (the template's Arguments field).
+                  Default: <code>{file} {arguments}</code>.
+                </td>
+              </tr>
+              <tr>
+                <td>Worker pool</td><td>no</td>
+                <td>
+                  Default <a @click.prevent="scrollTo('custom-workers')" href="#" class="text-brand-600 hover:underline">Worker Pool</a>
+                  for this app type. Applied to all templates that use this app unless the template overrides it.
+                  Useful to ensure, e.g., that <code>terraform</code> always runs on a worker with Terraform installed.
+                </td>
+              </tr>
+              <tr>
+                <td>Active</td><td>—</td>
+                <td>Inactive apps are hidden from the template editor. Existing templates using the app are not affected.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>How the command is assembled</h3>
+          <p>For each task run, Oachkatzl builds the subprocess command in this order:</p>
+          <ol>
+            <li><strong>Executable</strong> — the binary.</li>
+            <li><strong>Default arguments</strong> — always present, from the app definition.</li>
+            <li><strong>Script file and/or template arguments</strong> — controlled by the <em>Args template</em>.</li>
+          </ol>
+
+          <table class="help-table">
+            <thead><tr><th>Args template</th><th>Resulting command</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>{file} {arguments}</code> (default)</td>
+                <td><code>executable [default_args] script.tf --var env=prod</code></td>
+              </tr>
+              <tr>
+                <td><code>{arguments}</code></td>
+                <td><code>executable [default_args] --var env=prod</code> — no script file passed</td>
+              </tr>
+              <tr>
+                <td><code>{file}</code></td>
+                <td><code>executable [default_args] script.tf</code> — no extra arguments</td>
+              </tr>
+              <tr>
+                <td>(empty / anything else)</td>
+                <td><code>executable [default_args] script.tf [arguments]</code> — same as default</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout warning">
+            <strong>Security:</strong> Custom Apps execute arbitrary binaries on the worker. Only global admins can
+            register or modify them. The binary must already be present in the worker image — Oachkatzl never
+            downloads or installs executables at run time. Arguments are always passed as a list
+            (no shell interpolation), so shell injection via template arguments is not possible.
+          </div>
+
+          <h3>Example — Terraform</h3>
+          <p><strong>App definition:</strong></p>
+          <table class="help-table">
+            <tr><td>Slug</td><td><code>terraform</code></td></tr>
+            <tr><td>Title</td><td>Terraform</td></tr>
+            <tr><td>Executable</td><td><code>terraform</code></td></tr>
+            <tr><td>Default arguments</td><td><code>["-no-color"]</code></td></tr>
+            <tr><td>Args template</td><td><code>{arguments}</code> (Terraform subcommands are passed as arguments, not as a script file)</td></tr>
+            <tr><td>Worker pool</td><td><em>Terraform Worker</em> (a pool whose worker image includes the Terraform binary)</td></tr>
+          </table>
+
+          <p><strong>Template using this app:</strong></p>
+          <ul>
+            <li>App type: <em>terraform</em></li>
+            <li>Script / playbook: leave blank (Args template has no <code>{file}</code>)</li>
+            <li>Arguments: <code>["apply", "-auto-approve", "-var", "env=production"]</code></li>
+          </ul>
+          <p>Resulting command: <code>terraform -no-color apply -auto-approve -var env=production</code></p>
+
+          <h3>Example — kubectl</h3>
+          <table class="help-table">
+            <tr><td>Slug</td><td><code>kubectl</code></td></tr>
+            <tr><td>Executable</td><td><code>/usr/local/bin/kubectl</code></td></tr>
+            <tr><td>Default arguments</td><td><code>[]</code></td></tr>
+            <tr><td>Args template</td><td><code>{arguments}</code></td></tr>
+          </table>
+          <p>Template Arguments: <code>["rollout", "restart", "deployment/myapp", "-n", "production"]</code></p>
+          <p>Resulting command: <code>/usr/local/bin/kubectl rollout restart deployment/myapp -n production</code></p>
+
+          <h3>Using a Custom App in a template</h3>
+          <ol>
+            <li>Open a template (new or existing) and scroll to <strong>App type</strong>.</li>
+            <li>Select the Custom App from the dropdown — it appears alongside Ansible, Bash, Python.</li>
+            <li>Fill in the <strong>Script / playbook</strong> field if the args template uses <code>{file}</code>; leave blank otherwise.</li>
+            <li>Add any run-time arguments in the <strong>Arguments</strong> field (JSON array).</li>
+            <li>Environment variables, Survey Variables, Repositories, and Artifact Cache all work the same as with built-in app types.</li>
+          </ol>
+
+          <div class="callout info">
+            Inventory and Vault are Ansible-specific and have no effect on Custom App templates.
+          </div>
+        </div>
+      </section>
+
       <!-- ── Schedules ── -->
       <section id="schedules">
         <h2 class="help-h2">Schedules</h2>
@@ -1441,6 +1969,152 @@ curl -X POST "https://oachkatzl.example.com/api/execute/&lt;token&gt;" \
             <strong>Production checklist:</strong>
             Generate a fresh <code>OACHKATZL_ENCRYPTION_KEY</code> (<code>python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code>),
             set a strong <code>OACHKATZL_JWT_SECRET</code>, and change <code>OACHKATZL_ADMIN_PASSWORD</code> before going live.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Profile ── -->
+      <section id="profile">
+        <h2 class="help-h2">Profile</h2>
+        <div class="prose-box">
+          <p>Access your profile via the user icon in the bottom-left of the sidebar or navigate to <strong>/profile</strong>. The page is divided into three cards.</p>
+
+          <h3>Profile info</h3>
+          <p>Shows your username, email address, global role (User / Administrator) and authentication provider (local, ldap, oidc). These fields are read-only and can only be changed by an admin.</p>
+
+          <h3>Change password</h3>
+          <p>Only visible for <strong>local accounts</strong>. Users authenticated via LDAP or OIDC manage their password through the external provider — the card is replaced by an informational notice.</p>
+          <ol>
+            <li>Enter your current password.</li>
+            <li>Enter and confirm the new password (minimum 8 characters).</li>
+            <li>Click <strong>Change password</strong>.</li>
+          </ol>
+
+          <h3>Two-Factor Authentication</h3>
+          <p>Enable or disable TOTP-based 2FA for your account here. See the <a @click.prevent="scrollTo('2fa')" href="#" class="text-brand-600 hover:underline">2FA &amp; Security</a> section for the full enrollment flow.</p>
+          <p>
+            If your administrator has enforced 2FA globally, you will see a banner on the profile page and be redirected here until 2FA is set up.
+            You cannot dismiss this banner or use any other part of the app until enrollment is complete.
+          </p>
+
+          <h3>API Tokens</h3>
+          <p>
+            API tokens allow scripts and CI/CD pipelines to authenticate with the REST API without interactive login or 2FA.
+            They are managed via the API itself — there is currently no UI form for this:
+          </p>
+          <pre v-pre class="code-block"># List your tokens
+GET /api/auth/tokens
+
+# Create a new token
+POST /api/auth/tokens
+{"name": "ci-pipeline", "expires_at": null}
+# → returns {"token": "eyJ...", "id": "..."}  — copy the token now, it won't be shown again
+
+# Revoke a token
+DELETE /api/auth/tokens/&lt;token_id&gt;</pre>
+          <p>Tokens bypass the interactive 2FA step — the token itself is the credential. Revoke tokens immediately if they are compromised. Tokens can optionally carry an expiry date (<code>expires_at</code> in ISO 8601 format).</p>
+        </div>
+      </section>
+
+      <!-- ── Admin: User Management ── -->
+      <section id="admin-users">
+        <h2 class="help-h2">Admin: User Management</h2>
+        <div class="prose-box">
+          <p>Global admins manage all users under <strong>Admin → Users</strong> in the sidebar. Regular users do not see this page.</p>
+
+          <h3>Creating a user</h3>
+          <p>Click <strong>New user</strong> and fill in the form:</p>
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Username</td><td>yes</td><td>Unique, used for login. Cannot be changed after creation.</td></tr>
+              <tr><td>Email</td><td>yes</td><td>Used for notifications and display.</td></tr>
+              <tr><td>Name</td><td>no</td><td>Display name shown next to the username.</td></tr>
+              <tr><td>Password</td><td>yes</td><td>Minimum 8 characters. The user can change it later on their profile page.</td></tr>
+              <tr><td>Global admin</td><td>no</td><td>Grants access to all projects and the Admin section.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Editing a user</h3>
+          <p>Click the edit icon on any user row. Editable fields:</p>
+          <ul>
+            <li><strong>Email</strong> and <strong>Name</strong> — update display and notification address.</li>
+            <li><strong>New password</strong> — leave blank to keep the current password. Useful for admin password reset.</li>
+            <li><strong>Global admin</strong> — toggle admin status.</li>
+            <li><strong>Active</strong> — deactivating a user blocks all logins without deleting the account. Existing task runs and audit entries are preserved.</li>
+          </ul>
+
+          <h3>User list indicators</h3>
+          <table class="help-table">
+            <thead><tr><th>Badge</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge blue">admin</span> (shield icon)</td><td>User has global admin privileges.</td></tr>
+              <tr><td><span class="badge red">inactive</span></td><td>Account is deactivated — login is blocked.</td></tr>
+              <tr><td><span class="badge green">2FA</span></td><td>User has TOTP two-factor authentication enabled.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout info">
+            <strong>LDAP users:</strong> Users who log in via LDAP are created automatically on first login. Their username, email, and display name are synced from the directory. You can still set the <em>admin</em> flag manually or via LDAP admin group mappings.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Admin: Global Settings ── -->
+      <section id="admin-settings">
+        <h2 class="help-h2">Admin: Global Settings</h2>
+        <div class="prose-box">
+          <p>Accessible via <strong>Admin → Settings</strong> in the sidebar. Changes take effect immediately without a restart.</p>
+
+          <h3>Two-Factor Authentication (MFA)</h3>
+          <p>The <strong>Require MFA for all users</strong> toggle forces every user to enroll in TOTP before they can use the application. Users who have not yet set up 2FA are redirected to the profile page on their next login and cannot proceed until enrollment is complete.</p>
+
+          <h3>Task History Retention</h3>
+          <p>Controls how long completed task records (log output, status, run metadata) are kept in the database. Options: <em>Disabled</em> (keep forever), 7 days, 30 days, 90 days, 1 year. Tasks older than the threshold are deleted by a background cleanup job. Running tasks are never deleted.</p>
+
+          <h3>SMTP / E-Mail</h3>
+          <p>See <a @click.prevent="scrollTo('notifications')" href="#" class="text-brand-600 hover:underline">Notifications → SMTP configuration</a>.</p>
+
+          <h3>LDAP / Active Directory</h3>
+          <p>Oachkatzl can authenticate users against an LDAP or Active Directory server. On successful login, group memberships are read and synced to project roles automatically via group-to-project mappings.</p>
+
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Enabled</td><td>Toggle LDAP authentication on or off. Local accounts continue to work regardless.</td></tr>
+              <tr><td>Server URL</td><td>LDAP server address including scheme and port. Examples: <code>ldap://dc.example.com:389</code>, <code>ldaps://dc.example.com:636</code>.</td></tr>
+              <tr><td>Use TLS / Use SSL</td><td>Enable STARTTLS (port 389) or LDAPS (port 636). Use only one at a time.</td></tr>
+              <tr><td>Bind DN</td><td>Service account DN used to search the directory. Example: <code>CN=svc-oachkatzl,OU=ServiceAccounts,DC=example,DC=com</code>.</td></tr>
+              <tr><td>Bind password</td><td>Password for the bind account. Stored encrypted. Leave blank when editing to keep the existing password.</td></tr>
+              <tr><td>Base DN</td><td>Root of the directory tree to search. Example: <code>DC=example,DC=com</code>.</td></tr>
+              <tr><td>User search filter</td><td>LDAP filter to find a user by login name. Default: <code>(sAMAccountName={username})</code>. For OpenLDAP use <code>(uid={username})</code>.</td></tr>
+              <tr><td>Group membership attribute</td><td>Attribute on the user object that lists group memberships. Default: <code>memberOf</code>.</td></tr>
+              <tr><td>Follow nested groups</td><td>Resolve nested group memberships (recursive). Can be slow on large directories.</td></tr>
+              <tr><td>Email attribute</td><td>LDAP attribute mapped to the user's email. Default: <code>mail</code>.</td></tr>
+              <tr><td>Display name attribute</td><td>LDAP attribute mapped to the user's display name. Default: <code>displayName</code>.</td></tr>
+              <tr><td>UID attribute</td><td>Stable unique identifier for the user (used to link LDAP users to existing accounts). Default: <code>objectGUID</code>.</td></tr>
+              <tr><td>Admin groups</td><td>List of group DNs whose members automatically receive global admin privileges in Oachkatzl.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Testing the LDAP connection</h3>
+          <p>After saving the configuration, click <strong>Test connection</strong>. Oachkatzl attempts a bind with the configured service account and returns a success or error message. A successful test confirms network connectivity and credentials — it does not test user login or group mapping.</p>
+
+          <h3>Group-to-project mappings</h3>
+          <p>
+            Map LDAP/AD groups to project roles. When a user logs in, Oachkatzl reads their group memberships and automatically adds them to the configured projects with the mapped role. Users are also removed from projects if they leave the group.
+          </p>
+          <table class="help-table">
+            <thead><tr><th>Field</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>Group DN</td><td>Full distinguished name of the LDAP group. Example: <code>CN=Ops-Team,OU=Groups,DC=example,DC=com</code>.</td></tr>
+              <tr><td>Project</td><td>The Oachkatzl project to assign membership in.</td></tr>
+              <tr><td>Role</td><td>The project role to assign (owner / manager / task_runner / guest).</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout info">
+            Members added via LDAP group mapping are shown with an <span class="badge blue" style="font-size:10px">LDAP</span> badge in the project Members view. Their role is re-applied on each login, so manual changes may be overwritten.
           </div>
         </div>
       </section>

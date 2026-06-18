@@ -181,15 +181,26 @@ def run_task(self, task_id: str) -> None:
         if app_type == "ansible":
             from app.tasks.apps.ansible_app import build_command, galaxy_install
 
-            # Set isolated Galaxy paths so concurrent tasks don't collide
+            # Set isolated Galaxy paths so concurrent tasks don't collide.
+            # Task-local paths are prepended so they take priority over system paths.
             galaxy_roles_path       = os.path.join(workdir, ".galaxy", "roles")
             galaxy_collections_path = os.path.join(workdir, ".galaxy", "collections")
+
+            existing_roles = env.get("ANSIBLE_ROLES_PATH", "")
             env["ANSIBLE_ROLES_PATH"] = (
-                galaxy_roles_path + ":" + env.get("ANSIBLE_ROLES_PATH", "")
-            ).rstrip(":")
-            env["ANSIBLE_COLLECTIONS_PATHS"] = (
-                galaxy_collections_path + ":" + env.get("ANSIBLE_COLLECTIONS_PATHS", "")
-            ).rstrip(":")
+                galaxy_roles_path + (":" + existing_roles if existing_roles else "")
+            )
+
+            # Set both singular (Ansible 2.10+) and plural (legacy) forms so
+            # the installed collections are found regardless of Ansible version.
+            existing_coll = (
+                env.get("ANSIBLE_COLLECTIONS_PATH")
+                or env.get("ANSIBLE_COLLECTIONS_PATHS")
+                or ""
+            )
+            coll_path = galaxy_collections_path + (":" + existing_coll if existing_coll else "")
+            env["ANSIBLE_COLLECTIONS_PATH"]  = coll_path   # Ansible 2.10+
+            env["ANSIBLE_COLLECTIONS_PATHS"] = coll_path   # legacy alias
 
             galaxy_install(workdir, env, on_line, debug=task.debug)
             cmd, cleanup_files = build_command(task, workdir, cred_extra_vars=cred_extra_vars)

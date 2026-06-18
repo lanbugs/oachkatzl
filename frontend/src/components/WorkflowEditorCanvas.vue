@@ -1,3 +1,8 @@
+<script lang="ts">
+// Runtime exports must live in a plain <script> block — not in <script setup>
+export const ACTION_NODE_TYPES = new Set<string>(['list_generator', 'pdf_generator', 'send_mail', 'transfer_file'])
+</script>
+
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, markRaw } from 'vue'
 import {
@@ -14,17 +19,35 @@ import '@vue-flow/core/dist/style.css'
 import StartNodeComp from './workflow/StartNode.vue'
 import TemplateNodeComp from './workflow/TemplateNode.vue'
 import QuestionNodeComp from './workflow/QuestionNode.vue'
+import RemoteApprovalNodeComp from './workflow/RemoteApprovalNode.vue'
+import ActionNodeComp from './workflow/ActionNode.vue'
 import ConditionEdgeComp from './workflow/ConditionEdge.vue'
-import { X, Trash2, LayoutDashboard, HelpCircle, Play } from 'lucide-vue-next'
+import ListGeneratorConfigModal from './workflow/ListGeneratorConfigModal.vue'
+import PdfGeneratorConfigModal from './workflow/PdfGeneratorConfigModal.vue'
+import SendMailConfigModal from './workflow/SendMailConfigModal.vue'
+import TransferFileConfigModal from './workflow/TransferFileConfigModal.vue'
+import RemoteApprovalConfigModal from './workflow/RemoteApprovalConfigModal.vue'
+import { X, Trash2, LayoutDashboard, HelpCircle, Play, Zap, Sheet, FileText, Mail, Upload, MailCheck } from 'lucide-vue-next'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
+export type ActionNodeType = 'list_generator' | 'pdf_generator' | 'send_mail' | 'transfer_file'
+export type WNodeType = 'task' | 'question' | 'remote_approval' | ActionNodeType
+
+const ACTION_NODE_META: Record<ActionNodeType, { label: string; icon: any }> = {
+  list_generator: { label: 'List Generator', icon: Sheet },
+  pdf_generator:  { label: 'PDF Generator',  icon: FileText },
+  send_mail:      { label: 'Send Mail',       icon: Mail },
+  transfer_file:  { label: 'Transfer File',   icon: Upload },
+}
+
 export interface WNode {
   node_id: string
-  node_type: 'task' | 'question'
+  node_type: WNodeType
   slug: string
   label: string
   template_id: string | null
+  action_config: Record<string, any>
   on_success: string[]
   on_failure: string[]
   on_always: string[]
@@ -44,6 +67,7 @@ type Condition = 'success' | 'failure' | 'always'
 const props = defineProps<{
   nodes: WNode[]
   templates: Template[]
+  projectId: string
 }>()
 
 const emit = defineEmits<{
@@ -61,6 +85,8 @@ const nodeTypes = {
   start: markRaw(StartNodeComp),
   template: markRaw(TemplateNodeComp),
   question: markRaw(QuestionNodeComp),
+  remote_approval: markRaw(RemoteApprovalNodeComp),
+  action: markRaw(ActionNodeComp),
 } as any
 const edgeTypes = { condition: markRaw(ConditionEdgeComp) } as any
 
@@ -72,10 +98,23 @@ const vfEdges = ref<any[]>([])
 
 const showAddModal = ref(false)
 const pendingEdge = ref<{ sourceId: string; condition: Condition } | null>(null)
-const modalNodeType = ref<'task' | 'question'>('task')
+const modalGroup = ref<'task' | 'question' | 'remote_approval' | 'action'>('task')
+const modalActionSubtype = ref<ActionNodeType>('list_generator')
+const modalSourceArtifact = ref('')
 const modalSlug = ref('')
 const modalTemplateId = ref('')
 const modalLabel = ref('')
+
+// Action node config modal
+const showActionConfigModal = ref(false)
+const pendingActionType = ref<ActionNodeType>('list_generator')
+const pendingActionNodeId = ref<string | null>(null)
+const pendingActionIsNew = ref(false)
+
+// Remote approval config modal
+const showRemoteApprovalConfigModal = ref(false)
+const pendingRemoteApprovalNodeId = ref<string | null>(null)
+const pendingRemoteApprovalIsNew = ref(false)
 
 // ── Link-nodes modal state ─────────────────────────────────────────────────
 
@@ -241,18 +280,27 @@ function toVF(nodes: WNode[]) {
       const pos = posMap ? posMap.get(n.node_id) ?? { x: 400, y: 200 } : { x: n.position_x, y: n.position_y }
       const nodeId = n.node_id
       const isQuestion = n.node_type === 'question'
+      const isRemoteApproval = n.node_type === 'remote_approval'
+      const isAction = ACTION_NODE_TYPES.has(n.node_type)
+      let vfType = 'template'
+      if (isQuestion) vfType = 'question'
+      else if (isRemoteApproval) vfType = 'remote_approval'
+      else if (isAction) vfType = 'action'
       return {
         id: nodeId,
-        type: isQuestion ? 'question' : 'template',
+        type: vfType,
         position: pos,
         data: {
           label: n.label,
           node_type: n.node_type ?? 'task',
           slug: n.slug ?? '',
-          template_id: isQuestion ? null : n.template_id,
-          template_name: isQuestion ? '' : (props.templates.find(t => t.id === n.template_id)?.name ?? ''),
+          emails: (n.action_config ?? {}).emails ?? [],
+          template_id: (isQuestion || isRemoteApproval || isAction) ? null : n.template_id,
+          template_name: (isQuestion || isRemoteApproval || isAction) ? '' : (props.templates.find(t => t.id === n.template_id)?.name ?? ''),
+          action_config: n.action_config ?? {},
           onAddNode: (cond: Condition) => openAddModal(nodeId, cond),
           onLinkNode: () => openLinkModal(nodeId),
+          onConfigure: isAction ? () => openActionConfigModal(nodeId) : (isRemoteApproval ? () => openRemoteApprovalConfigModal(nodeId) : undefined),
         },
         deletable: true,
       }
@@ -287,10 +335,11 @@ function fromVF(): WNode[] {
     if (vn.id === '__start__') continue
     const node: WNode = {
       node_id: vn.id,
-      node_type: (vn.data.node_type ?? (vn.type === 'question' ? 'question' : 'task')) as 'task' | 'question',
+      node_type: (vn.data.node_type ?? (vn.type === 'question' ? 'question' : vn.type === 'remote_approval' ? 'remote_approval' : 'task')) as WNodeType,
       slug: vn.data.slug ?? '',
       label: vn.data.label ?? '',
-      template_id: vn.type === 'question' ? null : (vn.data.template_id ?? null),
+      template_id: (vn.type === 'question' || vn.type === 'remote_approval' || vn.type === 'action') ? null : (vn.data.template_id ?? null),
+      action_config: vn.data.action_config ?? {},
       on_success: [],
       on_failure: [],
       on_always: [],
@@ -377,11 +426,83 @@ function onPaneClick() {
 
 function openAddModal(sourceId: string, condition: Condition) {
   pendingEdge.value = { sourceId, condition }
-  modalNodeType.value = 'task'
+  modalGroup.value = 'task'
+  modalActionSubtype.value = 'list_generator'
+  modalSourceArtifact.value = ''
   modalSlug.value = ''
   modalTemplateId.value = ''
   modalLabel.value = ''
   showAddModal.value = true
+}
+
+function openActionConfigModal(nodeId: string) {
+  const vn = vfNodes.value.find((n: any) => n.id === nodeId)
+  if (!vn) return
+  pendingActionType.value = vn.data.node_type as ActionNodeType
+  pendingActionNodeId.value = nodeId
+  pendingActionIsNew.value = false
+  showActionConfigModal.value = true
+}
+
+function openRemoteApprovalConfigModal(nodeId: string) {
+  pendingRemoteApprovalNodeId.value = nodeId
+  pendingRemoteApprovalIsNew.value = false
+  showRemoteApprovalConfigModal.value = true
+}
+
+function confirmRemoteApprovalConfig(config: Record<string, any>) {
+  showRemoteApprovalConfigModal.value = false
+  const nodeId = pendingRemoteApprovalNodeId.value
+  if (!nodeId) return
+  vfNodes.value = vfNodes.value.map((n: any) =>
+    n.id === nodeId
+      ? { ...n, data: { ...n.data, slug: config.slug ?? '', emails: config.emails ?? [], action_config: { ...n.data.action_config, slug: config.slug, emails: config.emails } } }
+      : n
+  )
+  updateSelectedVfNode()
+  emitUpdate()
+  pendingRemoteApprovalNodeId.value = null
+  pendingRemoteApprovalIsNew.value = false
+}
+
+function cancelRemoteApprovalConfig() {
+  showRemoteApprovalConfigModal.value = false
+  if (pendingRemoteApprovalIsNew.value && pendingRemoteApprovalNodeId.value) {
+    const id = pendingRemoteApprovalNodeId.value
+    vfNodes.value = vfNodes.value.filter((n: any) => n.id !== id)
+    vfEdges.value = vfEdges.value.filter((e: any) => e.source !== id && e.target !== id)
+    emitUpdate()
+  }
+  pendingRemoteApprovalNodeId.value = null
+  pendingRemoteApprovalIsNew.value = false
+}
+
+function confirmActionConfig(config: Record<string, any>) {
+  showActionConfigModal.value = false
+  const nodeId = pendingActionNodeId.value
+  if (!nodeId) return
+  vfNodes.value = vfNodes.value.map((n: any) =>
+    n.id === nodeId ? { ...n, data: { ...n.data, action_config: config } } : n
+  )
+  updateSelectedVfNode()
+  emitUpdate()
+  pendingActionNodeId.value = null
+  pendingActionIsNew.value = false
+}
+
+function cancelActionConfig() {
+  showActionConfigModal.value = false
+  if (pendingActionIsNew.value && pendingActionNodeId.value) {
+    const id = pendingActionNodeId.value
+    vfNodes.value = vfNodes.value.filter((n: any) => n.id !== id)
+    vfEdges.value = vfEdges.value.filter((e: any) => e.source !== id && e.target !== id)
+    rebuildStartEdges()
+    selectedNodeId.value = null
+    selectedVfNode.value = null
+    emitUpdate()
+  }
+  pendingActionNodeId.value = null
+  pendingActionIsNew.value = false
 }
 
 function confirmAddNode() {
@@ -415,12 +536,26 @@ function confirmAddNode() {
   // When sourceId === '__start__', the new node has no incoming edges → it
   // becomes a root, and toVF() adds the __start__ → newId edge automatically.
 
+  const effectiveNodeType: WNodeType = modalGroup.value === 'action'
+    ? modalActionSubtype.value
+    : modalGroup.value as WNodeType
+  const isAction = ACTION_NODE_TYPES.has(effectiveNodeType)
+  const isRemoteApproval = effectiveNodeType === 'remote_approval'
+
+  // Pre-populate source artifact into action_config so config modal inherits it
+  let initialActionConfig: Record<string, any> = {}
+  if (isAction && modalSourceArtifact.value.trim()) {
+    const sourceKey = modalActionSubtype.value === 'send_mail' ? 'attachment_artifact_tag' : 'source_artifact_tag'
+    initialActionConfig[sourceKey] = modalSourceArtifact.value.trim()
+  }
+
   updatedWNodes.push({
     node_id: newId,
-    node_type: modalNodeType.value,
-    slug: modalNodeType.value === 'question' ? modalSlug.value.trim() : '',
+    node_type: effectiveNodeType,
+    slug: effectiveNodeType === 'question' ? modalSlug.value.trim() : '',
     label: modalLabel.value,
-    template_id: modalNodeType.value === 'question' ? null : (modalTemplateId.value || null),
+    template_id: (effectiveNodeType === 'question' || effectiveNodeType === 'remote_approval' || isAction) ? null : (modalTemplateId.value || null),
+    action_config: initialActionConfig,
     on_success: [],
     on_failure: [],
     on_always: [],
@@ -435,6 +570,21 @@ function confirmAddNode() {
   selectedNodeId.value = newId
   updateSelectedVfNode()
   emitUpdate()
+
+  // Open config modal immediately for action nodes
+  if (isAction) {
+    pendingActionType.value = modalActionSubtype.value
+    pendingActionNodeId.value = newId
+    pendingActionIsNew.value = true
+    showActionConfigModal.value = true
+  }
+
+  // Open remote approval config modal immediately
+  if (isRemoteApproval) {
+    pendingRemoteApprovalNodeId.value = newId
+    pendingRemoteApprovalIsNew.value = true
+    showRemoteApprovalConfigModal.value = true
+  }
 }
 
 // ── Link existing nodes ────────────────────────────────────────────────────
@@ -591,7 +741,7 @@ function deleteSelectedNode() {
             <Trash2 class="w-3.5 h-3.5" /> Delete node
           </button>
         </div>
-        <div class="grid gap-3" :class="selectedVfNode.type === 'question' ? 'grid-cols-1' : 'grid-cols-2'">
+        <div class="grid gap-3" :class="(selectedVfNode.type === 'question' || selectedVfNode.type === 'remote_approval' || selectedVfNode.type === 'action') ? 'grid-cols-1' : 'grid-cols-2'">
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Label</label>
             <input
@@ -602,7 +752,7 @@ function deleteSelectedNode() {
               placeholder="Optional label"
             />
           </div>
-          <div v-if="selectedVfNode.type !== 'question'">
+          <div v-if="selectedVfNode.type === 'template'">
             <label class="block text-xs font-medium text-gray-600 mb-1">Template</label>
             <select
               :value="selectedVfNode.data.template_id ?? ''"
@@ -612,6 +762,28 @@ function deleteSelectedNode() {
               <option value="">— none —</option>
               <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
             </select>
+          </div>
+          <div v-else-if="selectedVfNode.type === 'action'" class="space-y-2">
+            <button type="button"
+              @click="openActionConfigModal(selectedNodeId!)"
+              class="w-full flex items-center justify-center gap-1.5 bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+            >
+              <Zap class="w-3.5 h-3.5" /> Configure Action
+            </button>
+            <p v-if="selectedVfNode.data.action_config?.artifact_cache_id" class="text-[11px] text-violet-500">
+              Cache: {{ selectedVfNode.data.action_config.artifact_cache_id?.slice(-8) }}
+            </p>
+          </div>
+          <div v-else-if="selectedVfNode.type === 'remote_approval'" class="space-y-2">
+            <button type="button"
+              @click="openRemoteApprovalConfigModal(selectedNodeId!)"
+              class="w-full flex items-center justify-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+            >
+              <MailCheck class="w-3.5 h-3.5" /> Configure Recipients
+            </button>
+            <p v-if="selectedVfNode.data.emails?.length" class="text-[11px] text-indigo-500">
+              {{ selectedVfNode.data.emails.length }} recipient{{ selectedVfNode.data.emails.length > 1 ? 's' : '' }} configured
+            </p>
           </div>
           <div v-else class="space-y-2">
             <div>
@@ -699,6 +871,68 @@ function deleteSelectedNode() {
       </div>
     </Teleport>
 
+    <!-- Action node config modal -->
+    <Teleport to="body">
+      <div
+        v-if="showActionConfigModal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        @click.self="cancelActionConfig"
+      >
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+          <ListGeneratorConfigModal
+            v-if="pendingActionType === 'list_generator'"
+            :project-id="projectId"
+            :initial="pendingActionNodeId ? vfNodes.find((n:any) => n.id === pendingActionNodeId)?.data?.action_config : undefined"
+            @confirm="confirmActionConfig"
+            @cancel="cancelActionConfig"
+          />
+          <PdfGeneratorConfigModal
+            v-else-if="pendingActionType === 'pdf_generator'"
+            :project-id="projectId"
+            :initial="pendingActionNodeId ? vfNodes.find((n:any) => n.id === pendingActionNodeId)?.data?.action_config : undefined"
+            @confirm="confirmActionConfig"
+            @cancel="cancelActionConfig"
+          />
+          <SendMailConfigModal
+            v-else-if="pendingActionType === 'send_mail'"
+            :project-id="projectId"
+            :initial="pendingActionNodeId ? vfNodes.find((n:any) => n.id === pendingActionNodeId)?.data?.action_config : undefined"
+            @confirm="confirmActionConfig"
+            @cancel="cancelActionConfig"
+          />
+          <TransferFileConfigModal
+            v-else-if="pendingActionType === 'transfer_file'"
+            :project-id="projectId"
+            :initial="pendingActionNodeId ? vfNodes.find((n:any) => n.id === pendingActionNodeId)?.data?.action_config : undefined"
+            @confirm="confirmActionConfig"
+            @cancel="cancelActionConfig"
+          />
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Remote Approval config modal -->
+    <Teleport to="body">
+      <div
+        v-if="showRemoteApprovalConfigModal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        @click.self="cancelRemoteApprovalConfig"
+      >
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <RemoteApprovalConfigModal
+            :initial="pendingRemoteApprovalNodeId
+              ? { slug: vfNodes.find((n:any) => n.id === pendingRemoteApprovalNodeId)?.data?.slug ?? '',
+                  emails: vfNodes.find((n:any) => n.id === pendingRemoteApprovalNodeId)?.data?.emails ?? [] }
+              : undefined"
+            @confirm="confirmRemoteApprovalConfig"
+            @cancel="cancelRemoteApprovalConfig"
+          />
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Add node modal -->
     <Teleport to="body">
       <div
@@ -734,39 +968,35 @@ function deleteSelectedNode() {
               </span>
             </div>
 
-            <!-- Node type selector -->
+            <!-- Node type: 4 top-level buttons -->
             <div>
               <label class="block text-xs font-medium text-gray-600 mb-2">Node type</label>
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  @click="modalNodeType = 'task'"
-                  class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
-                  :class="modalNodeType === 'task'
-                    ? 'bg-brand-600 border-brand-600 text-white'
-                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
-                >
-                  <Play class="w-3 h-3" /> Task
-                </button>
-                <button
-                  type="button"
-                  @click="modalNodeType = 'question'"
-                  class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
-                  :class="modalNodeType === 'question'
-                    ? 'bg-amber-500 border-amber-500 text-white'
-                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
-                >
-                  <HelpCircle class="w-3 h-3" /> Approval Gate
-                </button>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" @click="modalGroup = 'task'"
+                  class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalGroup === 'task' ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                ><Play class="w-3 h-3" /> Task</button>
+                <button type="button" @click="modalGroup = 'question'"
+                  class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalGroup === 'question' ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                ><HelpCircle class="w-3 h-3" /> Approval Gate</button>
+                <button type="button" @click="modalGroup = 'remote_approval'"
+                  class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalGroup === 'remote_approval' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                ><MailCheck class="w-3 h-3" /> Remote Approval</button>
+                <button type="button" @click="modalGroup = 'action'"
+                  class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalGroup === 'action' ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                ><Zap class="w-3 h-3" /> Action</button>
               </div>
             </div>
 
-            <div v-if="modalNodeType === 'task'">
+            <!-- Task: template selector -->
+            <div v-if="modalGroup === 'task'">
               <label class="block text-xs font-medium text-gray-600 mb-1">
                 Template <span class="text-gray-400 font-normal">(optional)</span>
               </label>
-              <select
-                v-model="modalTemplateId"
+              <select v-model="modalTemplateId"
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
               >
                 <option value="">— none —</option>
@@ -774,14 +1004,20 @@ function deleteSelectedNode() {
               </select>
             </div>
 
-            <div v-else class="space-y-3">
+            <!-- Remote Approval: info only (config opens in modal) -->
+            <div v-else-if="modalGroup === 'remote_approval'">
+              <p class="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+                After adding, you will configure the recipient emails and optional artifact slug in the next step.
+              </p>
+            </div>
+
+            <!-- Approval Gate: artifact slug -->
+            <div v-else-if="modalGroup === 'question'" class="space-y-3">
               <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">
                   Artifact slug <span class="text-red-500">*</span>
                 </label>
-                <input
-                  v-model="modalSlug"
-                  type="text"
+                <input v-model="modalSlug" type="text"
                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
                   placeholder="e.g. deploy-approval"
                   pattern="[a-z0-9][a-z0-9_-]*"
@@ -789,6 +1025,44 @@ function deleteSelectedNode() {
                 <p class="text-[11px] text-gray-400 mt-1">
                   The preceding task uploads a JSON artifact with this name containing
                   <code class="bg-gray-100 px-1 rounded">{"title": "...", "text": "..."}</code>.
+                </p>
+              </div>
+            </div>
+
+            <!-- Action: subtype dropdown + source artifact -->
+            <div v-else class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Action type</label>
+                <select v-model="modalActionSubtype"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
+                >
+                  <option v-for="(meta, type) in ACTION_NODE_META" :key="type" :value="type">
+                    {{ meta.label }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">
+                  {{ modalActionSubtype === 'send_mail' ? 'Attachment artifact' : 'Source artifact' }}
+                  <span v-if="modalActionSubtype !== 'send_mail'" class="text-red-500">*</span>
+                  <span v-else class="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input v-model="modalSourceArtifact" type="text"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  :placeholder="
+                    modalActionSubtype === 'pdf_generator' ? 'e.g. report.md' :
+                    modalActionSubtype === 'send_mail'     ? 'e.g. report.pdf' :
+                    modalActionSubtype === 'transfer_file' ? 'e.g. report.xlsx' :
+                    'e.g. scan-results'
+                  "
+                />
+                <p class="text-[11px] text-gray-400 mt-1">
+                  {{
+                    modalActionSubtype === 'pdf_generator'  ? 'Markdown or HTML artifact from a previous task.' :
+                    modalActionSubtype === 'send_mail'      ? 'Artifact to attach to the email.' :
+                    modalActionSubtype === 'transfer_file'  ? 'Artifact to transfer to the remote destination.' :
+                    'JSON array artifact from a previous task (array of objects).'
+                  }}
                 </p>
               </div>
             </div>

@@ -21,6 +21,7 @@ from app.models.credential_type import CredentialType
 from app.models.credential import Credential
 from app.models.workflow import WorkflowTemplate, WorkflowNode
 from app.models.workflow_run import WorkflowRun, WorkflowNodeRun
+from app.models.remote_approval import RemoteApprovalToken
 # Schedule references both Template and WorkflowTemplate — must come last
 from app.models.schedule import Schedule
 
@@ -45,6 +46,7 @@ __all__ = [
     "Credential",
     "WorkflowTemplate", "WorkflowNode",
     "WorkflowRun", "WorkflowNodeRun",
+    "RemoteApprovalToken",
     "ArtifactCache", "ArtifactRun", "Artifact",
     "WorkerPool",
 ]
