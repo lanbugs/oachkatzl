@@ -186,17 +186,28 @@ def run_task(self, task_id: str) -> None:
             galaxy_roles_path       = os.path.join(workdir, ".galaxy", "roles")
             galaxy_collections_path = os.path.join(workdir, ".galaxy", "collections")
 
-            existing_roles = env.get("ANSIBLE_ROLES_PATH", "")
+            _ansible_default_roles = (
+                os.path.expanduser("~/.ansible/roles")
+                + ":/usr/share/ansible/roles:/etc/ansible/roles"
+            )
+            existing_roles = env.get("ANSIBLE_ROLES_PATH", "") or _ansible_default_roles
             env["ANSIBLE_ROLES_PATH"] = (
                 galaxy_roles_path + (":" + existing_roles if existing_roles else "")
             )
 
             # Set both singular (Ansible 2.10+) and plural (legacy) forms so
             # the installed collections are found regardless of Ansible version.
+            # Fall back to Ansible's built-in defaults when no env var is set so
+            # globally installed collections (e.g. from the worker image) remain
+            # accessible after we override the env var with our task-local path.
+            _ansible_default_coll = (
+                os.path.expanduser("~/.ansible/collections")
+                + ":/usr/share/ansible/collections"
+            )
             existing_coll = (
                 env.get("ANSIBLE_COLLECTIONS_PATH")
                 or env.get("ANSIBLE_COLLECTIONS_PATHS")
-                or ""
+                or _ansible_default_coll
             )
             coll_path = galaxy_collections_path + (":" + existing_coll if existing_coll else "")
             env["ANSIBLE_COLLECTIONS_PATH"]  = coll_path   # Ansible 2.10+
