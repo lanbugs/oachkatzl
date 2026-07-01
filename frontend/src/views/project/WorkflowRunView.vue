@@ -5,6 +5,7 @@ import { projectsApi } from '@/api/projects'
 import { StopCircle, Loader2, ArrowLeft, GitMerge, HelpCircle, CheckCircle, XCircle, MailCheck } from 'lucide-vue-next'
 import WorkflowGraph from '@/components/WorkflowGraph.vue'
 import type { GraphNode } from '@/components/WorkflowGraph.vue'
+import SurveyRunModal from '@/components/SurveyRunModal.vue'
 import api from '@/api/client'
 
 const route = useRoute()
@@ -20,6 +21,10 @@ const approvalInfo = ref<{ node_id: string; title: string; text: string } | null
 const approving = ref(false)
 const rejecting = ref(false)
 
+// Survey state
+const surveyInfo = ref<{ node_id: string; schema: any } | null>(null)
+const submittingSurvey = ref(false)
+
 const RUNNING_STATUSES = new Set(['waiting', 'running', 'waiting_approval'])
 const RUNNING_NODE_STATUSES = new Set(['pending', 'running', 'waiting_approval'])
 
@@ -33,10 +38,16 @@ async function poll() {
   try {
     const { data } = await projectsApi.getWorkflowRun(projectId.value, runId.value)
     run.value = data
-    if (data.status === 'waiting_approval' && !approvalInfo.value) {
-      fetchApprovalInfo()
-    } else if (data.status !== 'waiting_approval') {
+    if (data.status === 'waiting_approval') {
+      const pendingNr = data.node_runs?.find((nr: any) => nr.node_id === data.pending_approval_node_id)
+      if (pendingNr?.node_type === 'survey') {
+        if (!surveyInfo.value) fetchSurveySchema()
+      } else if (!approvalInfo.value) {
+        fetchApprovalInfo()
+      }
+    } else {
       approvalInfo.value = null
+      surveyInfo.value = null
     }
     if (!isRunning()) stopPoll()
   } catch {
@@ -50,6 +61,29 @@ async function fetchApprovalInfo() {
     approvalInfo.value = data
   } catch {
     approvalInfo.value = { node_id: '', title: 'Proceed?', text: '' }
+  }
+}
+
+async function fetchSurveySchema() {
+  try {
+    const { data } = await api.get(`/projects/${projectId.value}/workflow-runs/${runId.value}/survey`)
+    surveyInfo.value = data
+  } catch {
+    surveyInfo.value = null
+  }
+}
+
+async function submitSurvey(answers: Record<string, any>) {
+  submittingSurvey.value = true
+  try {
+    await api.post(`/projects/${projectId.value}/workflow-runs/${runId.value}/survey-submit`, { answers })
+    surveyInfo.value = null
+    await poll()
+    if (isRunning()) startPoll()
+  } catch (e: any) {
+    alert(e.response?.data?.message || 'Failed to submit survey')
+  } finally {
+    submittingSurvey.value = false
   }
 }
 
@@ -72,6 +106,7 @@ async function reject() {
   try {
     await api.post(`/projects/${projectId.value}/workflow-runs/${runId.value}/reject`)
     approvalInfo.value = null
+    surveyInfo.value = null
     await poll()
   } catch (e: any) {
     alert(e.response?.data?.message || 'Failed to reject')
@@ -262,6 +297,16 @@ const graphNodes = computed<GraphNode[]>(() => {
           </div>
         </div>
       </Teleport>
+
+      <!-- Survey modal -->
+      <SurveyRunModal
+        :open="run.status === 'waiting_approval' && !!surveyInfo"
+        :schema="surveyInfo?.schema ?? null"
+        :submitting="submittingSurvey"
+        :cancelling="rejecting"
+        @submit="submitSurvey"
+        @cancel="reject"
+      />
 
       <!-- Remote approval info banner -->
       <div

@@ -50,10 +50,14 @@ def clean_db():
         Inventory, Environment, View, Template, Schedule, Task, TaskLog,
         Integration, Runner, NotificationSetting, Event, Option, CustomApp,
     )
+    from app.models.workflow import WorkflowTemplate
+    from app.models.workflow_run import WorkflowRun
+    from app.models.artifact import ArtifactCache, ArtifactRun, Artifact
     for cls in (
         User, ApiToken, Project, ProjectMember, AccessKey, Repository,
         Inventory, Environment, View, Template, Schedule, Task, TaskLog,
         Integration, Runner, NotificationSetting, Event, Option, CustomApp,
+        WorkflowTemplate, WorkflowRun, ArtifactCache, ArtifactRun, Artifact,
     ):
         cls.drop_collection()
 

@@ -15,7 +15,7 @@ ACTION_NODE_TYPES: frozenset[str] = frozenset(
     {"list_generator", "pdf_generator", "send_mail", "transfer_file"}
 )
 
-CONTROL_NODE_TYPES: frozenset[str] = frozenset({"question", "remote_approval"})
+CONTROL_NODE_TYPES: frozenset[str] = frozenset({"question", "remote_approval", "survey"})
 
 
 def _ensure_mongo() -> None:
@@ -504,10 +504,10 @@ def advance_workflow(self, workflow_run_id: str) -> None:
                 if decision == "start":
                     log.debug("Workflow %s: starting node %s", workflow_run_id, nr.node_id)
                     node_type = getattr(node, "node_type", "task") if node else "task"
-                    if node and node_type == "question":
-                        # Pause for user approval — advance_workflow will not be rescheduled
-                        log.info("Workflow %s: question node %s reached, pausing for approval",
-                                 workflow_run_id, nr.node_id)
+                    if node and node_type in ("question", "survey"):
+                        # Pause for user approval/input — advance_workflow will not be rescheduled
+                        log.info("Workflow %s: %s node %s reached, pausing for input",
+                                 workflow_run_id, node_type, nr.node_id)
                         nr.status = "waiting_approval"
                         changed = True
                     elif node and node_type == "remote_approval":

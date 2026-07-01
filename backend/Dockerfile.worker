@@ -16,9 +16,9 @@ FROM python:3.12-alpine
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Runtime: git, ssh client (ansible), sshpass (password-based SSH), curl
+# Runtime: git, ssh client (ansible), sshpass (password-based SSH), curl, jq (task scripts)
 # pango/cairo/fontconfig: required by weasyprint for PDF rendering
-RUN apk add --no-cache git curl bash openssh-client sshpass \
+RUN apk add --no-cache git curl bash openssh-client sshpass jq \
     pango cairo gdk-pixbuf fontconfig ttf-freefont
 
 # Copy installed packages from builder

@@ -21,18 +21,20 @@ import TemplateNodeComp from './workflow/TemplateNode.vue'
 import QuestionNodeComp from './workflow/QuestionNode.vue'
 import RemoteApprovalNodeComp from './workflow/RemoteApprovalNode.vue'
 import ActionNodeComp from './workflow/ActionNode.vue'
+import SurveyNodeComp from './workflow/SurveyNode.vue'
 import ConditionEdgeComp from './workflow/ConditionEdge.vue'
 import ListGeneratorConfigModal from './workflow/ListGeneratorConfigModal.vue'
 import PdfGeneratorConfigModal from './workflow/PdfGeneratorConfigModal.vue'
 import SendMailConfigModal from './workflow/SendMailConfigModal.vue'
 import TransferFileConfigModal from './workflow/TransferFileConfigModal.vue'
 import RemoteApprovalConfigModal from './workflow/RemoteApprovalConfigModal.vue'
-import { X, Trash2, LayoutDashboard, HelpCircle, Play, Zap, Sheet, FileText, Mail, Upload, MailCheck } from 'lucide-vue-next'
+import SurveyConfigModal from './workflow/SurveyConfigModal.vue'
+import { X, Trash2, LayoutDashboard, HelpCircle, Play, Zap, Sheet, FileText, Mail, Upload, MailCheck, ClipboardList } from 'lucide-vue-next'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type ActionNodeType = 'list_generator' | 'pdf_generator' | 'send_mail' | 'transfer_file'
-export type WNodeType = 'task' | 'question' | 'remote_approval' | ActionNodeType
+export type WNodeType = 'task' | 'question' | 'remote_approval' | 'survey' | ActionNodeType
 
 const ACTION_NODE_META: Record<ActionNodeType, { label: string; icon: any }> = {
   list_generator: { label: 'List Generator', icon: Sheet },
@@ -87,6 +89,7 @@ const nodeTypes = {
   question: markRaw(QuestionNodeComp),
   remote_approval: markRaw(RemoteApprovalNodeComp),
   action: markRaw(ActionNodeComp),
+  survey: markRaw(SurveyNodeComp),
 } as any
 const edgeTypes = { condition: markRaw(ConditionEdgeComp) } as any
 
@@ -98,7 +101,7 @@ const vfEdges = ref<any[]>([])
 
 const showAddModal = ref(false)
 const pendingEdge = ref<{ sourceId: string; condition: Condition } | null>(null)
-const modalGroup = ref<'task' | 'question' | 'remote_approval' | 'action'>('task')
+const modalGroup = ref<'task' | 'question' | 'remote_approval' | 'action' | 'survey'>('task')
 const modalActionSubtype = ref<ActionNodeType>('list_generator')
 const modalSourceArtifact = ref('')
 const modalSlug = ref('')
@@ -115,6 +118,11 @@ const pendingActionIsNew = ref(false)
 const showRemoteApprovalConfigModal = ref(false)
 const pendingRemoteApprovalNodeId = ref<string | null>(null)
 const pendingRemoteApprovalIsNew = ref(false)
+
+// Survey config modal
+const showSurveyConfigModal = ref(false)
+const pendingSurveyNodeId = ref<string | null>(null)
+const pendingSurveyIsNew = ref(false)
 
 // ── Link-nodes modal state ─────────────────────────────────────────────────
 
@@ -282,10 +290,12 @@ function toVF(nodes: WNode[]) {
       const isQuestion = n.node_type === 'question'
       const isRemoteApproval = n.node_type === 'remote_approval'
       const isAction = ACTION_NODE_TYPES.has(n.node_type)
+      const isSurvey = n.node_type === 'survey'
       let vfType = 'template'
       if (isQuestion) vfType = 'question'
       else if (isRemoteApproval) vfType = 'remote_approval'
       else if (isAction) vfType = 'action'
+      else if (isSurvey) vfType = 'survey'
       return {
         id: nodeId,
         type: vfType,
@@ -295,12 +305,12 @@ function toVF(nodes: WNode[]) {
           node_type: n.node_type ?? 'task',
           slug: n.slug ?? '',
           emails: (n.action_config ?? {}).emails ?? [],
-          template_id: (isQuestion || isRemoteApproval || isAction) ? null : n.template_id,
-          template_name: (isQuestion || isRemoteApproval || isAction) ? '' : (props.templates.find(t => t.id === n.template_id)?.name ?? ''),
+          template_id: (isQuestion || isRemoteApproval || isAction || isSurvey) ? null : n.template_id,
+          template_name: (isQuestion || isRemoteApproval || isAction || isSurvey) ? '' : (props.templates.find(t => t.id === n.template_id)?.name ?? ''),
           action_config: n.action_config ?? {},
           onAddNode: (cond: Condition) => openAddModal(nodeId, cond),
           onLinkNode: () => openLinkModal(nodeId),
-          onConfigure: isAction ? () => openActionConfigModal(nodeId) : (isRemoteApproval ? () => openRemoteApprovalConfigModal(nodeId) : undefined),
+          onConfigure: isAction ? () => openActionConfigModal(nodeId) : (isRemoteApproval ? () => openRemoteApprovalConfigModal(nodeId) : (isSurvey ? () => openSurveyConfigModal(nodeId) : undefined)),
         },
         deletable: true,
       }
@@ -335,10 +345,10 @@ function fromVF(): WNode[] {
     if (vn.id === '__start__') continue
     const node: WNode = {
       node_id: vn.id,
-      node_type: (vn.data.node_type ?? (vn.type === 'question' ? 'question' : vn.type === 'remote_approval' ? 'remote_approval' : 'task')) as WNodeType,
+      node_type: (vn.data.node_type ?? (vn.type === 'question' ? 'question' : vn.type === 'remote_approval' ? 'remote_approval' : vn.type === 'survey' ? 'survey' : 'task')) as WNodeType,
       slug: vn.data.slug ?? '',
       label: vn.data.label ?? '',
-      template_id: (vn.type === 'question' || vn.type === 'remote_approval' || vn.type === 'action') ? null : (vn.data.template_id ?? null),
+      template_id: (vn.type === 'question' || vn.type === 'remote_approval' || vn.type === 'action' || vn.type === 'survey') ? null : (vn.data.template_id ?? null),
       action_config: vn.data.action_config ?? {},
       on_success: [],
       on_failure: [],
@@ -477,6 +487,40 @@ function cancelRemoteApprovalConfig() {
   pendingRemoteApprovalIsNew.value = false
 }
 
+function openSurveyConfigModal(nodeId: string) {
+  pendingSurveyNodeId.value = nodeId
+  pendingSurveyIsNew.value = false
+  showSurveyConfigModal.value = true
+}
+
+function confirmSurveyConfig(config: Record<string, any>) {
+  showSurveyConfigModal.value = false
+  const nodeId = pendingSurveyNodeId.value
+  if (!nodeId) return
+  vfNodes.value = vfNodes.value.map((n: any) =>
+    n.id === nodeId ? { ...n, data: { ...n.data, action_config: config } } : n
+  )
+  updateSelectedVfNode()
+  emitUpdate()
+  pendingSurveyNodeId.value = null
+  pendingSurveyIsNew.value = false
+}
+
+function cancelSurveyConfig() {
+  showSurveyConfigModal.value = false
+  if (pendingSurveyIsNew.value && pendingSurveyNodeId.value) {
+    const id = pendingSurveyNodeId.value
+    vfNodes.value = vfNodes.value.filter((n: any) => n.id !== id)
+    vfEdges.value = vfEdges.value.filter((e: any) => e.source !== id && e.target !== id)
+    rebuildStartEdges()
+    selectedNodeId.value = null
+    selectedVfNode.value = null
+    emitUpdate()
+  }
+  pendingSurveyNodeId.value = null
+  pendingSurveyIsNew.value = false
+}
+
 function confirmActionConfig(config: Record<string, any>) {
   showActionConfigModal.value = false
   const nodeId = pendingActionNodeId.value
@@ -541,6 +585,7 @@ function confirmAddNode() {
     : modalGroup.value as WNodeType
   const isAction = ACTION_NODE_TYPES.has(effectiveNodeType)
   const isRemoteApproval = effectiveNodeType === 'remote_approval'
+  const isSurvey = effectiveNodeType === 'survey'
 
   // Pre-populate source artifact into action_config so config modal inherits it
   let initialActionConfig: Record<string, any> = {}
@@ -554,7 +599,7 @@ function confirmAddNode() {
     node_type: effectiveNodeType,
     slug: effectiveNodeType === 'question' ? modalSlug.value.trim() : '',
     label: modalLabel.value,
-    template_id: (effectiveNodeType === 'question' || effectiveNodeType === 'remote_approval' || isAction) ? null : (modalTemplateId.value || null),
+    template_id: (effectiveNodeType === 'question' || effectiveNodeType === 'remote_approval' || isAction || isSurvey) ? null : (modalTemplateId.value || null),
     action_config: initialActionConfig,
     on_success: [],
     on_failure: [],
@@ -584,6 +629,13 @@ function confirmAddNode() {
     pendingRemoteApprovalNodeId.value = newId
     pendingRemoteApprovalIsNew.value = true
     showRemoteApprovalConfigModal.value = true
+  }
+
+  // Open survey config modal immediately
+  if (isSurvey) {
+    pendingSurveyNodeId.value = newId
+    pendingSurveyIsNew.value = true
+    showSurveyConfigModal.value = true
   }
 }
 
@@ -741,7 +793,7 @@ function deleteSelectedNode() {
             <Trash2 class="w-3.5 h-3.5" /> Delete node
           </button>
         </div>
-        <div class="grid gap-3" :class="(selectedVfNode.type === 'question' || selectedVfNode.type === 'remote_approval' || selectedVfNode.type === 'action') ? 'grid-cols-1' : 'grid-cols-2'">
+        <div class="grid gap-3" :class="(selectedVfNode.type === 'question' || selectedVfNode.type === 'remote_approval' || selectedVfNode.type === 'action' || selectedVfNode.type === 'survey') ? 'grid-cols-1' : 'grid-cols-2'">
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Label</label>
             <input
@@ -783,6 +835,17 @@ function deleteSelectedNode() {
             </button>
             <p v-if="selectedVfNode.data.emails?.length" class="text-[11px] text-indigo-500">
               {{ selectedVfNode.data.emails.length }} recipient{{ selectedVfNode.data.emails.length > 1 ? 's' : '' }} configured
+            </p>
+          </div>
+          <div v-else-if="selectedVfNode.type === 'survey'" class="space-y-2">
+            <button type="button"
+              @click="openSurveyConfigModal(selectedNodeId!)"
+              class="w-full flex items-center justify-center gap-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-700 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+            >
+              <ClipboardList class="w-3.5 h-3.5" /> Configure Survey
+            </button>
+            <p v-if="selectedVfNode.data.action_config?.input_artifact_name" class="text-[11px] text-teal-500">
+              {{ selectedVfNode.data.action_config.input_artifact_name }} → {{ selectedVfNode.data.action_config.output_artifact_name || '?' }}
             </p>
           </div>
           <div v-else class="space-y-2">
@@ -933,6 +996,24 @@ function deleteSelectedNode() {
       </div>
     </Teleport>
 
+    <!-- Survey config modal -->
+    <Teleport to="body">
+      <div
+        v-if="showSurveyConfigModal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        @click.self="cancelSurveyConfig"
+      >
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <SurveyConfigModal
+            :initial="pendingSurveyNodeId ? vfNodes.find((n:any) => n.id === pendingSurveyNodeId)?.data?.action_config : undefined"
+            @confirm="confirmSurveyConfig"
+            @cancel="cancelSurveyConfig"
+          />
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Add node modal -->
     <Teleport to="body">
       <div
@@ -988,6 +1069,10 @@ function deleteSelectedNode() {
                   class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
                   :class="modalGroup === 'action' ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
                 ><Zap class="w-3 h-3" /> Action</button>
+                <button type="button" @click="modalGroup = 'survey'"
+                  class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium border transition-colors"
+                  :class="modalGroup === 'survey' ? 'bg-teal-600 border-teal-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'"
+                ><ClipboardList class="w-3 h-3" /> Survey</button>
               </div>
             </div>
 
@@ -1008,6 +1093,14 @@ function deleteSelectedNode() {
             <div v-else-if="modalGroup === 'remote_approval'">
               <p class="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
                 After adding, you will configure the recipient emails and optional artifact slug in the next step.
+              </p>
+            </div>
+
+            <!-- Survey: info only (config opens in modal) -->
+            <div v-else-if="modalGroup === 'survey'">
+              <p class="text-xs text-teal-600 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                After adding, you will configure the input/output artifact names in the next step. The preceding task
+                must upload a JSON artifact describing the survey form fields.
               </p>
             </div>
 

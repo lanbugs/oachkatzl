@@ -26,7 +26,7 @@ class WorkflowNode(EmbeddedDocument):
     node_id = StringField(required=True)       # uuid4 string, unique within workflow
     node_type = StringField(
         default="task",
-        choices=("task", "question", "remote_approval", "list_generator", "pdf_generator", "send_mail", "transfer_file"),
+        choices=("task", "question", "remote_approval", "survey", "list_generator", "pdf_generator", "send_mail", "transfer_file"),
     )
     action_config = DictField(default=dict)
     slug = StringField(default="")             # user-defined artifact key for question nodes

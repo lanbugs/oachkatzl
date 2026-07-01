@@ -88,3 +88,7 @@ class WorkflowRunOut(Schema):
 
 class WorkflowStartIn(Schema):
     survey_answers = String(load_default="{}")
+
+
+class SurveySubmitIn(Schema):
+    answers = Dict(required=True)

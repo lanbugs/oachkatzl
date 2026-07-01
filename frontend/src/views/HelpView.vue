@@ -19,6 +19,7 @@ const sections = [
   { id: 'approval-gate',        label: 'Approval Gates' },
   { id: 'remote-approval-gate', label: 'Remote Approval' },
   { id: 'action-nodes',         label: 'Action Nodes' },
+  { id: 'survey-node',          label: 'Survey Node' },
   { id: 'artifacts',      label: 'Artifact Cache' },
   { id: 'pip-proxy',      label: 'pip Package Proxy' },
   { id: 'scaling',        label: 'Scaling Workers' },
@@ -1153,6 +1154,199 @@ resp.raise_for_status()</pre>
             After creating the Credential Type under <strong>Settings → Credential Types</strong>, create a Credential
             of that type in your project under <strong>Keys &amp; Credentials → Credentials</strong>.
             The Transfer File node's <em>Credential</em> picker lists all project credentials — select the one that matches the target server.
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Survey Node ── -->
+      <section id="survey-node">
+        <h2 class="help-h2">Survey Node</h2>
+        <div class="prose-box">
+          <p>
+            A <strong>Survey Node</strong> is a workflow node that <em>pauses</em> the run and shows a
+            dynamically generated form to the user. Unlike the fixed
+            <a @click.prevent="scrollTo('survey')" href="#" class="text-brand-600 hover:underline">Survey Variables</a>
+            (collected once before the whole run starts), a Survey Node's fields are defined at
+            <em>run time</em> — a preceding task uploads a JSON description of the form, and the
+            submitted answers are written back to the artifact cache for the next node to read.
+          </p>
+
+          <div class="callout info">
+            Survey Nodes are only available inside <strong>Workflows</strong> and require an
+            <a @click.prevent="scrollTo('artifacts')" href="#" class="text-brand-600 hover:underline">Artifact Cache</a>
+            attached to the workflow. They have no associated template and do not consume a task slot.
+          </div>
+
+          <h3>Adding a Survey Node to a workflow</h3>
+          <ol>
+            <li>Open your workflow in the editor (<strong>Project → Workflows → Edit</strong>).</li>
+            <li>Hover over any node to reveal the toolbar and click one of the condition buttons (✓ / ✗ / →).</li>
+            <li>In the <em>Add node</em> dialog, click <strong>Survey</strong> (teal button). The configuration dialog opens immediately after adding.</li>
+            <li>Enter an <strong>Input artifact name</strong> — the name of the JSON artifact the preceding task must upload, describing the form fields.</li>
+            <li>Enter an <strong>Output artifact name</strong> — the name under which the submitted answers are stored for downstream nodes to read.</li>
+            <li>Click <em>Save</em>. The node appears as a teal card with a 📋 icon.</li>
+          </ol>
+
+          <h3>What happens when the node is reached</h3>
+          <ol>
+            <li>The workflow run switches to <strong>Awaiting Approval</strong> status.</li>
+            <li>Oachkatzl reads the JSON artifact named after <strong>Input artifact name</strong> from the run's artifact cache.</li>
+            <li>A <strong>modal dialog</strong> appears automatically in the run view, with the form fields rendered from that JSON.</li>
+            <li>The user fills in the fields and clicks <strong>Submit</strong> (or <strong>Cancel</strong> to stop the workflow, same as an <a @click.prevent="scrollTo('approval-gate')" href="#" class="text-brand-600 hover:underline">Approval Gate</a> rejection).</li>
+            <li>On submit, the answers are written as a JSON artifact under <strong>Output artifact name</strong> and the workflow resumes.</li>
+          </ol>
+
+          <h3>Survey schema format</h3>
+          <p>The input artifact must contain a JSON object with a <code>title</code>, optional <code>description</code>, and a <code>fields</code> array:</p>
+          <pre v-pre class="code-block">{
+  "title": "Deployment Details",
+  "description": "Confirm the rollout parameters before we continue.",
+  "fields": [
+    { "name": "environment", "label": "Environment", "type": "enum", "required": true,
+      "options": [
+        { "value": "dev",  "label": "Dev" },
+        { "value": "prod", "label": "Prod" }
+      ] },
+    { "name": "region", "label": "Region", "type": "enum", "required": true,
+      "options_by": {
+        "field": "environment",
+        "map": {
+          "dev":  [ { "value": "eu-dev", "label": "EU Dev" } ],
+          "prod": [ { "value": "eu-1",   "label": "EU-1" }, { "value": "us-1", "label": "US-1" } ]
+        }
+      },
+      "visible_if": [ { "field": "environment", "op": "eq", "value": "prod" } ] },
+    { "name": "reason", "label": "Rollout reason", "type": "textarea" },
+    { "name": "notify", "label": "Notify channels", "type": "multiselect",
+      "options": [
+        { "value": "slack", "label": "Slack" },
+        { "value": "email", "label": "Email" }
+      ] },
+    { "name": "replicas",   "label": "Replica count", "type": "int", "default": 3 },
+    { "name": "confirm",    "label": "I have reviewed the staging results", "type": "bool" },
+    { "name": "api_token",  "label": "One-time API token", "type": "secret" }
+  ]
+}</pre>
+
+          <h3>Field reference</h3>
+          <table class="help-table">
+            <thead><tr><th>Key</th><th>Required</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>yes</td><td>Answer key — becomes the field name in the output JSON.</td></tr>
+              <tr><td><code>label</code></td><td>no</td><td>Display label. Falls back to <code>name</code> if omitted.</td></tr>
+              <tr><td><code>type</code></td><td>yes</td><td><code>string</code>, <code>int</code>, <code>bool</code>, <code>enum</code>, <code>multiselect</code>, <code>secret</code>, <code>textarea</code></td></tr>
+              <tr><td><code>required</code></td><td>no</td><td>Blocks submission until filled (ignored for <code>bool</code>).</td></tr>
+              <tr><td><code>default</code></td><td>no</td><td>Pre-filled value.</td></tr>
+              <tr><td><code>options</code></td><td>for <code>enum</code> / <code>multiselect</code></td><td>Static list of <code>{"value","label"}</code> choices.</td></tr>
+              <tr><td><code>options_by</code></td><td>no</td><td>Makes the choice list depend on another field — see below.</td></tr>
+              <tr><td><code>visible_if</code></td><td>no</td><td>List of conditions (AND-combined) that control whether the field is shown at all.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Conditional dropdowns — <code>options_by</code></h3>
+          <p>
+            Use <code>options_by</code> on a field to change its available options based on the current
+            value of another field — for example, showing different regions depending on the chosen
+            environment:
+          </p>
+          <pre v-pre class="code-block">{
+  "name": "region",
+  "type": "enum",
+  "options_by": {
+    "field":   "environment",
+    "map":     { "dev": [ { "value": "eu-dev", "label": "EU Dev" } ],
+                 "prod": [ { "value": "eu-1", "label": "EU-1" } ] },
+    "default": []
+  }
+}</pre>
+          <table class="help-table">
+            <thead><tr><th>Key</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>field</code></td><td>Name of the field this one depends on.</td></tr>
+              <tr><td><code>map</code></td><td>Object mapping the parent field's current value to an options array.</td></tr>
+              <tr><td><code>default</code></td><td>Options shown when the parent value has no entry in <code>map</code> (defaults to <code>options</code>, or an empty list).</td></tr>
+            </tbody>
+          </table>
+          <p>If the previously selected value is no longer in the new option list (because the parent value changed), the field is automatically cleared.</p>
+
+          <h3>Conditional visibility — <code>visible_if</code></h3>
+          <p>Hide or show a field entirely based on other answers. All listed conditions must match (AND):</p>
+          <pre v-pre class="code-block">"visible_if": [
+  { "field": "environment", "op": "eq",     "value": "prod" },
+  { "field": "notify",      "op": "in",     "value": ["slack", "email"] }
+]</pre>
+          <table class="help-table">
+            <thead><tr><th>Operator</th><th>Matches when</th></tr></thead>
+            <tbody>
+              <tr><td><code>eq</code></td><td>Field value equals <code>value</code>.</td></tr>
+              <tr><td><code>neq</code></td><td>Field value does not equal <code>value</code>.</td></tr>
+              <tr><td><code>in</code></td><td>Field value is one of the items in the <code>value</code> array.</td></tr>
+              <tr><td><code>not_in</code></td><td>Field value is not in the <code>value</code> array.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Example — Bash task uploading the survey schema</h3>
+          <pre v-pre class="code-block">#!/bin/bash
+# NAME must match "Input artifact name" set on the Survey node in the editor
+NAME="deploy-survey"
+
+PAYLOAD=$(jq -n '{
+  title: "Deployment Details",
+  fields: [
+    { name: "environment", label: "Environment", type: "enum", required: true,
+      options: [ {value: "dev", label: "Dev"}, {value: "prod", label: "Prod"} ] },
+    { name: "region", label: "Region", type: "enum", required: true,
+      options_by: { field: "environment",
+        map: { dev: [{value: "eu-dev", label: "EU Dev"}],
+               prod: [{value: "eu-1", label: "EU-1"}] } },
+      visible_if: [ {field: "environment", op: "eq", value: "prod"} ] }
+  ]
+}')
+
+curl -s -X POST "$OACHKATZL_ARTIFACT_URL" \
+  -H "X-Artifact-Token: $OACHKATZL_ARTIFACT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"$NAME\", \"data\": $PAYLOAD}"</pre>
+
+          <h3>Example — Python task reading the submitted answers</h3>
+          <p>The next node's task can read the output artifact the same way any other artifact is downloaded:</p>
+          <pre v-pre class="code-block">import os, requests
+
+list_url  = os.environ["OACHKATZL_ARTIFACT_LIST_URL"]
+token     = os.environ["OACHKATZL_ARTIFACT_TOKEN"]
+headers   = {"X-Artifact-Token": token}
+
+items = requests.get(list_url, headers=headers).json()
+artifact = next(a for a in items if a["name"] == "deploy-answers")
+
+base = list_url.rsplit("/list", 1)[0]
+answers = requests.get(f"{base}/{artifact['id']}/download", headers=headers).json()
+
+print(answers)
+# {"environment": "prod", "region": "eu-1"}</pre>
+
+          <h3>Outcomes</h3>
+          <table class="help-table">
+            <thead><tr><th>Action</th><th>Node status</th><th>What happens next</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Submit</strong></td>
+                <td><span class="badge green">success</span></td>
+                <td>The answers are stored under <em>Output artifact name</em>; downstream <em>On Success</em> / <em>Always</em> edges fire.</td>
+              </tr>
+              <tr>
+                <td><strong>Cancel</strong></td>
+                <td><span class="badge orange">stopped</span></td>
+                <td>The workflow is stopped immediately, same as rejecting an Approval Gate. All remaining pending nodes are skipped.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout warning">
+            Fields are validated in the browser (required / numeric) before submission, but the JSON
+            schema itself is <strong>not</strong> validated server-side — a malformed schema artifact
+            simply renders an empty or partial form. Test your generator script's output before relying
+            on it in production workflows.
           </div>
         </div>
       </section>

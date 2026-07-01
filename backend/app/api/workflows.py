@@ -11,6 +11,7 @@ from app.schemas.workflow import (
     WorkflowTemplateOut,
     WorkflowRunOut,
     WorkflowStartIn,
+    SurveySubmitIn,
 )
 from app.services.rbac import require_project_role
 
@@ -515,6 +516,103 @@ def reject_workflow_run(project_id, run_id):
     return {"message": "Rejected"}, 200
 
 
+def _find_wf_node(wf, node_id: str):
+    try:
+        if not wf:
+            return None
+        for n in (wf.nodes or []):
+            if n.node_id == node_id:
+                return n
+    except Exception as exc:
+        log.warning("Could not resolve workflow node %s: %s", node_id, exc)
+    return None
+
+
+@bp.get("/api/projects/<project_id>/workflow-runs/<run_id>/survey")
+@require_project_role("owner", "manager", "task_runner")
+def get_survey_schema(project_id, run_id):
+    """Return the dynamic survey form schema for the pending survey node.
+
+    Reads a JSON artifact named after the node's configured
+    `input_artifact_name` from the workflow run's artifact run.
+    """
+    from app.models.workflow_run import WorkflowRun
+    try:
+        run = WorkflowRun.objects.get(id=run_id, project=g.project)
+    except WorkflowRun.DoesNotExist:
+        raise HTTPError(404, "Workflow run not found")
+
+    if run.status != "waiting_approval" or not run.pending_approval_node_id:
+        raise HTTPError(400, "No pending survey for this run")
+
+    node_id = run.pending_approval_node_id
+    node = _find_wf_node(run.workflow, node_id)
+    if not node or getattr(node, "node_type", "") != "survey":
+        raise HTTPError(400, "Pending node is not a survey")
+
+    input_name = (node.action_config or {}).get("input_artifact_name", "")
+    output_name = (node.action_config or {}).get("output_artifact_name", "")
+    schema: dict = {}
+
+    if input_name and run.artifact_run:
+        try:
+            from app.models.artifact import Artifact
+            art = Artifact.objects(
+                run=run.artifact_run, name=input_name, artifact_type="json"
+            ).order_by("-created_at").first()
+            if art and art.json_data:
+                schema = json.loads(art.json_data)
+        except Exception as exc:
+            log.warning("Could not read survey schema artifact '%s': %s", input_name, exc)
+
+    return {
+        "node_id": node_id,
+        "input_artifact_name": input_name,
+        "output_artifact_name": output_name,
+        "schema": schema,
+    }, 200
+
+
+@bp.post("/api/projects/<project_id>/workflow-runs/<run_id>/survey-submit")
+@require_project_role("owner", "manager", "task_runner")
+@bp.input(SurveySubmitIn, arg_name="body")
+def submit_survey(project_id, run_id, body):
+    """Submit survey answers — stores them as a JSON artifact and resumes the workflow."""
+    from app.models.workflow_run import WorkflowRun
+    from app.tasks.run_workflow import advance_workflow
+
+    try:
+        run = WorkflowRun.objects.get(id=run_id, project=g.project)
+    except WorkflowRun.DoesNotExist:
+        raise HTTPError(404, "Workflow run not found")
+
+    if run.status != "waiting_approval" or not run.pending_approval_node_id:
+        raise HTTPError(400, "No pending survey for this run")
+
+    node_id = run.pending_approval_node_id
+    node = _find_wf_node(run.workflow, node_id)
+    if not node or getattr(node, "node_type", "") != "survey":
+        raise HTTPError(400, "Pending node is not a survey")
+
+    output_name = (node.action_config or {}).get("output_artifact_name", "")
+    if output_name and run.artifact_run:
+        from app.services.artifact_service import store_json
+        store_json(run.artifact_run, output_name, body["answers"])
+
+    for nr in (run.node_runs or []):
+        if nr.node_id == node_id:
+            nr.status = "success"
+            nr.edges_fired = False  # advance_workflow will fire edges
+            break
+
+    run.status = "running"
+    run.pending_approval_node_id = ""
+    run.save()
+
+    advance_workflow.apply_async(args=[str(run.id)], countdown=1)
+    return {"message": "Submitted"}, 200
+
+
 # ─────────────────────────────────────────────────────────────
 #  Internal helpers
 # ─────────────────────────────────────────────────────────────
@@ -528,7 +626,7 @@ def _build_nodes(node_dicts: list) -> list:
     nodes = []
     for nd in node_dicts:
         node_type = nd.get("node_type", "task") or "task"
-        if node_type not in {"task", "question", "remote_approval"} | ACTION_NODE_TYPES:
+        if node_type not in {"task", "question", "remote_approval", "survey"} | ACTION_NODE_TYPES:
             node_type = "task"
         node = WorkflowNode(
             node_id=nd["node_id"],

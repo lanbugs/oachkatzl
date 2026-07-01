@@ -175,16 +175,19 @@ const ACTION_NODE_TYPES_GRAPH = new Set(['list_generator', 'pdf_generator', 'sen
 function isQuestion(n: GraphNode) { return n.node_type === 'question' }
 function isRemoteApproval(n: GraphNode) { return n.node_type === 'remote_approval' }
 function isAction(n: GraphNode) { return ACTION_NODE_TYPES_GRAPH.has(n.node_type ?? '') }
+function isSurvey(n: GraphNode) { return n.node_type === 'survey' }
 function nodeFill(n: GraphNode) {
   if (isQuestion(n) && !n.status) return '#fffbeb'
   if (isRemoteApproval(n) && !n.status) return '#eef2ff'
   if (isAction(n) && !n.status) return '#f5f3ff'
+  if (isSurvey(n) && !n.status) return '#f0fdfa'
   return n.status ? (STATUS_FILL[n.status] ?? '#f8fafc') : '#ffffff'
 }
 function nodeStroke(n: GraphNode) {
   if (isQuestion(n) && !n.status) return '#f59e0b'
   if (isRemoteApproval(n) && !n.status) return '#6366f1'
   if (isAction(n) && !n.status) return '#7c3aed'
+  if (isSurvey(n) && !n.status) return '#0d9488'
   return n.status ? (STATUS_STROKE[n.status] ?? '#cbd5e1') : '#e2e8f0'
 }
 function nodeStrokeW(n: GraphNode) {
@@ -306,17 +309,26 @@ function taskUrl(n: GraphNode): string | null {
             font-family="system-ui,sans-serif">⚡</text>
         </g>
 
+        <!-- Survey node: teal clipboard badge -->
+        <g v-if="isSurvey(n)">
+          <circle cx="20" :cy="NH / 2" r="10"
+            fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5" />
+          <text x="20" :y="NH / 2 + 4" text-anchor="middle"
+            font-size="10" font-weight="700" fill="#0d9488"
+            font-family="system-ui,sans-serif">📋</text>
+        </g>
+
         <!-- Node name (main) -->
         <text
-          :x="(isQuestion(n) || isRemoteApproval(n) || isAction(n)) ? NW / 2 + 8 : NW / 2" :y="n.status ? 40 : NH / 2 - 4"
+          :x="(isQuestion(n) || isRemoteApproval(n) || isAction(n) || isSurvey(n)) ? NW / 2 + 8 : NW / 2" :y="n.status ? 40 : NH / 2 - 4"
           text-anchor="middle" font-size="13" font-weight="600"
-          :fill="isQuestion(n) ? '#92400e' : isRemoteApproval(n) ? '#3730a3' : isAction(n) ? '#4c1d95' : '#1e293b'"
+          :fill="isQuestion(n) ? '#92400e' : isRemoteApproval(n) ? '#3730a3' : isAction(n) ? '#4c1d95' : isSurvey(n) ? '#0f766e' : '#1e293b'"
           font-family="system-ui,sans-serif">
           {{ displayName(n) }}
         </text>
 
         <!-- Sub-label for task nodes -->
-        <text v-if="!isQuestion(n) && !isRemoteApproval(n) && displaySub(n)"
+        <text v-if="!isQuestion(n) && !isRemoteApproval(n) && !isSurvey(n) && displaySub(n)"
           :x="NW / 2" :y="n.status ? 55 : NH / 2 + 13"
           text-anchor="middle" font-size="10"
           fill="#94a3b8" font-family="system-ui,sans-serif">
@@ -339,8 +351,16 @@ function taskUrl(n: GraphNode): string | null {
           Remote approval
         </text>
 
+        <!-- "Survey" sub-label for survey nodes -->
+        <text v-else-if="isSurvey(n)"
+          :x="NW / 2 + 8" :y="n.status ? 55 : NH / 2 + 13"
+          text-anchor="middle" font-size="10" font-style="italic"
+          fill="#0d9488" font-family="system-ui,sans-serif">
+          Survey form
+        </text>
+
         <!-- "no template" placeholder for task nodes -->
-        <text v-else-if="!isQuestion(n) && !isRemoteApproval(n) && !n.template_name && !n.label"
+        <text v-else-if="!isQuestion(n) && !isRemoteApproval(n) && !isSurvey(n) && !n.template_name && !n.label"
           :x="NW / 2" :y="n.status ? 55 : NH / 2 + 13"
           text-anchor="middle" font-size="10" font-style="italic"
           fill="#cbd5e1" font-family="system-ui,sans-serif">
